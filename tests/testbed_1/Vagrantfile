@@ -1,0 +1,91 @@
+Vagrant.configure("2") do |config|
+  # ssh configuration
+  config.ssh.username = "vagrant"
+
+  config.ssh.keep_alive = true
+
+  # see https://www.univie.ac.at/ct/stefan/gi18.pdf figure 1
+  #
+  #                                               1
+  #                                           +-------+
+  #                                           |       |
+  #      +------------------------------------|   t   |------------------------------------+
+  #  e_l |                      192.168.12.11 |       | 192.168.14.11                      |
+  #      |                                    +-------+                                e_r |
+  #      |                          192.168.13.11 |                                        |
+  #      |                                    e_m |                                        |
+  #      |                                        |                                        |
+  #      |                                        |                                        |
+  #      |                                        |                                        |
+  #      |                                        |                                        |
+  #      | 192.168.12.12                          | 192.168.13.13            192.168.14.14 |
+  #  +-------+                                +-------+                                +-------+
+  #  |       |               l-to-m           |       |               m-to-r           |       |
+  #  |  v_l  |--------------------------------|  v_m  |--------------------------------|  v_r  |
+  #  |       | 192.168.23.12    192.168.23.13 |       | 192.168.34.13    192.168.13.14 |       |
+  #  +-------+                                +-------+                                +-------+
+  #      2                                        3                                        4
+
+
+  config.vm.box = "debian/bullseye64"
+  config.vm.provider "virtualbox" do |virtualbox|
+    virtualbox.memory = "512"
+    virtualbox.cpus = "1"
+  end
+
+  config.vm.provision "shell", inline: "apt-get install --yes python3-apt"
+  config.vm.provision "ansible" do |ansible|
+    ansible.verbose = "v"
+    ansible.playbook = "common.yml"
+  end
+
+  config.vm.define "t" do |t|
+    t.vm.hostname = "t"
+    t.vm.network "private_network",
+      ip: "192.168.12.11",
+      virtualbox__intnet: "e_l"
+
+    t.vm.network "private_network",
+      ip: "192.168.13.11",
+      virtualbox__intnet: "e_m"
+
+    t.vm.network "private_network",
+      ip: "192.168.14.11",
+      virtualbox__intnet: "e_r"
+  end
+
+  config.vm.define "v_l" do |v_l|
+    v_l.vm.hostname = "v-l"
+    v_l.vm.network "private_network",
+      ip: "192.168.12.12",
+      virtualbox__intnet: "e_l"
+
+    v_l.vm.network "private_network",
+      ip: "192.168.23.12",
+      virtualbox__intnet: "l-to-m"
+  end
+  config.vm.define "v_m" do |v_m|
+    v_m.vm.hostname = "v-m"
+    v_m.vm.network "private_network",
+      ip: "192.168.23.13",
+      virtualbox__intnet: "l-to-m"
+
+    v_m.vm.network "private_network",
+      ip: "192.168.13.13",
+      virtualbox__intnet: "e_m"
+
+    v_m.vm.network "private_network",
+      ip: "192.168.34.13",
+      virtualbox__intnet: "m-to-r"
+  end
+  config.vm.define "v_r" do |v_r|
+    v_r.vm.hostname = "v-r"
+    v_r.vm.network "private_network",
+      ip: "192.168.34.14",
+      virtualbox__intnet: "m-to-r"
+
+    v_r.vm.network "private_network",
+      ip: "192.168.14.14",
+      virtualbox__intnet: "e_r"
+  end
+end

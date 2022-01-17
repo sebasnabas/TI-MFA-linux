@@ -1,0 +1,60 @@
+---
+- hosts: all
+  become: true
+  become_method: sudo
+  tasks:
+    - name: Update cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install necessary packages
+      ansible.builtin.apt:
+        pkg:
+          - gpg
+
+    - name: Add frrouting repo key
+      ansible.builtin.apt_key:
+        url: https://deb.frrouting.org/frr/keys.asc
+        state: present
+
+    - name: Add frrouting repo
+      ansible.builtin.apt_repository:
+        repo: deb https://deb.frrouting.org/frr bullseye frr-8
+        state: present
+
+    - name: Install frrouting
+      ansible.builtin.apt:
+        pkg:
+          - frr
+          - frr-pythontools
+
+    - name: Configure loading of mpls modules at boot
+      ansible.builtin.blockinfile:
+        path: /etc/modules-load.d/mpls.conf
+        block: |
+          mpls_router
+          mpls_iptunnel
+
+    - name: Load mpls modules
+      ansible.builtin.shell:
+        cmd: |
+          modprobe mpls_router
+          modprobe mpls_iptunnel
+
+    - name: Configure mpls forwarding
+      ansible.builtin.blockinfile:
+        path: /etc/sysctl.d/91-mpls.conf
+        block: |
+          # Enable MPLS Label processing on all interfaces
+          net.mpls.conf.eth0.input=1
+          net.mpls.conf.eth1.input=1
+          net.mpls.conf.eth2.input=1
+          net.mpls.platform_labels=100000
+
+    - name: Enable mpls forwarding
+      ansible.builtin.shell:
+        cmd:
+          sysctl -w net.mpls.conf.eth0.input=1
+          sysctl -w net.mpls.conf.eth1.input=1
+          sysctl -w net.mpls.conf.eth2.input=1
+          sysctl -w net.mpls.platform_labels=100000
