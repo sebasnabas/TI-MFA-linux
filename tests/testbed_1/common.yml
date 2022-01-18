@@ -2,7 +2,13 @@
 - hosts: all
   become: true
   become_method: sudo
+  gather_facts: true
   tasks:
+    - name: Add loopback interface
+      ansible.builtin.shell:
+        cmd: ip addr add "{{ loopback_ipv4_address }}" dev lo
+      when: ansible_lo.ipv4_secondaries is undefined
+
     - name: Update cache
       ansible.builtin.apt:
         update_cache: true
@@ -11,6 +17,7 @@
       ansible.builtin.apt:
         pkg:
           - gpg
+          - tcpdump
 
     - name: Add frrouting repo key
       ansible.builtin.apt_key:
@@ -28,33 +35,129 @@
           - frr
           - frr-pythontools
 
-    - name: Configure loading of mpls modules at boot
-      ansible.builtin.blockinfile:
-        path: /etc/modules-load.d/mpls.conf
-        block: |
-          mpls_router
-          mpls_iptunnel
+    - name: Configure ip forwarding
+      ansible.posix.sysctl:
+        name: "{{ item }}"
+        value: 1
+        state: present
+        sysctl_set: true
+        reload: true
+      loop:
+        - net.ipv4.conf.all.forwarding
+        - net.ipv6.conf.all.forwarding
 
     - name: Load mpls modules
-      ansible.builtin.shell:
-        cmd: |
-          modprobe mpls_router
-          modprobe mpls_iptunnel
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - mpls_router
+        - mpls_iptunnel
 
     - name: Configure mpls forwarding
-      ansible.builtin.blockinfile:
-        path: /etc/sysctl.d/91-mpls.conf
-        block: |
-          # Enable MPLS Label processing on all interfaces
-          net.mpls.conf.eth0.input=1
-          net.mpls.conf.eth1.input=1
-          net.mpls.conf.eth2.input=1
-          net.mpls.platform_labels=100000
+      ansible.posix.sysctl:
+        name: "net.mpls.conf.{{ item }}.input"
+        value: 1
+        state: present
+        sysctl_set: true
+        reload: true
+      loop: "{{ ansible_interfaces }}"
+      notify: Restart frrouting
 
-    - name: Enable mpls forwarding
-      ansible.builtin.shell:
-        cmd:
-          sysctl -w net.mpls.conf.eth0.input=1
-          sysctl -w net.mpls.conf.eth1.input=1
-          sysctl -w net.mpls.conf.eth2.input=1
-          sysctl -w net.mpls.platform_labels=100000
+    - name: Configure mpls label stack
+      ansible.posix.sysctl:
+        name: net.mpls.platform_labels
+        value: 100000
+        state: present
+        sysctl_set: true
+        reload: true
+
+    - name: Add OSPF configuration for loopback
+      ansible.builtin.blockinfile:
+        path: /etc/frr/frr.conf
+        block: |
+          router ospf
+           ospf router-id {{ loopback_ipv4_address }}
+           capability opaque
+           mpls-te on
+           mpls-te router-address {{ loopback_ipv4_address }}
+           segment-routing on
+           segment-routing global-block 16000 23999
+           segment-routing node-msd 8
+           segment-routing prefix {{loopback_ipv4_address }}/32 index 1021
+           fast-reroute ti-lfa
+           router-info area
+          exit
+          !
+          interface lo
+           ip address {{ loopback_ipv4_address }}
+           ip ospf area 0
+          exit
+          !
+
+    - name: Add OSPF configuration for all other interfaces
+      ansible.builtin.blockinfile:
+        path: /etc/frr/frr.conf
+        block: |
+          interface {{ item }}
+           ip address {{ hostvars[inventory_hostname]['ansible_' + item]['ipv4']['address'] }}
+           ip ospf area 0
+           ip ospf network point-to-point
+           no shut
+          exit
+          !
+        marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item }}"
+      when: item != "lo"
+      loop: "{{ ansible_interfaces }}"
+
+    - name: Enable OSPFv2 for FRRouting
+      ansible.builtin.blockinfile:
+        path: /etc/frr/daemons
+        block: |
+          bgpd=no
+          ospfd=yes
+          ospf6d=no
+          ripd=no
+          ripngd=no
+          isisd=no
+          pimd=no
+          ldpd=no
+          nhrpd=no
+          eigrpd=no
+          babeld=no
+          sharpd=no
+          pbrd=no
+          bfdd=no
+          fabricd=no
+          vrrpd=no
+          pathd=no
+
+          vtysh_enable=yes
+          zebra_options="  -A 127.0.0.1 -s 90000000"
+          bgpd_options="   -A 127.0.0.1"
+          ospfd_options="  -A 127.0.0.1"
+          ospf6d_options=" -A ::1"
+          ripd_options="   -A 127.0.0.1"
+          ripngd_options=" -A ::1"
+          isisd_options="  -A 127.0.0.1"
+          pimd_options="   -A 127.0.0.1"
+          ldpd_options="   -A 127.0.0.1"
+          nhrpd_options="  -A 127.0.0.1"
+          eigrpd_options=" -A 127.0.0.1"
+          babeld_options=" -A 127.0.0.1"
+          sharpd_options=" -A 127.0.0.1"
+          pbrd_options="   -A 127.0.0.1"
+          staticd_options="-A 127.0.0.1"
+          bfdd_options="   -A 127.0.0.1"
+          fabricd_options="-A 127.0.0.1"
+          vrrpd_options="  -A 127.0.0.1"
+          pathd_options="  -A 127.0.0.1"
+
+          frr_profile="traditional"
+      notify: Restart frrouting
+
+  handlers:
+    - name: Restart frrouting
+      ansible.builtin.service:
+        name: frr
+        state: restarted
