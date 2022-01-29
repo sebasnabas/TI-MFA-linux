@@ -1,0 +1,13 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: Copy test dir
+      ansible.builtin.copy:
+        dest: /home/vagrant/frr-topology-tests/
+        src: ospf_timfa
+
+    # - name: Run acceptance test
+    #   ansible.builtin.command:
+    #     cmd: python3 -m pytest -s -v ospf_timfa/test_ospf_timfa_topo1.py
+    #     chdir: /home/vagrant/frr-topology-tests

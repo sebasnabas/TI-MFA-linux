@@ -1,0 +1,23 @@
+Vagrant.configure("2") do |config|
+  # ssh configuration
+  config.ssh.username = "vagrant"
+
+  config.ssh.keep_alive = true
+
+  config.vm.box = "debian/bullseye64"
+  config.vm.provider "virtualbox" do |virtualbox|
+    virtualbox.memory = "512"
+    virtualbox.cpus = "1"
+  end
+
+  config.vm.provision "shell", inline: "apt-get install --yes python3-apt"
+
+  config.vm.define "timfa-test-machine-frr" do |machine|
+    machine.vm.hostname = "timfa-test-machine-frr"
+
+    machine.vm.provision :ansible do |ansible|
+      ansible.verbose = "v"
+      ansible.playbook = "common.yml"
+    end
+  end
+end
