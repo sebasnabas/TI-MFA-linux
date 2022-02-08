@@ -93,6 +93,8 @@ static void __exit timfa_exit(void)
     int i;
     pr_debug("TI-MFA shutting down\n");
 
+    nf_unregister_net_hook(&init_net, &timfa);
+
     pr_info("TI-MFA shut down\n");
 }
 
