@@ -16,6 +16,9 @@
     - name: Install necessary packages
       ansible.builtin.apt:
         pkg:
+          - linux-headers-5.10.0-10-amd64
+          - cmake
+          - gcc
           - gpg
           - tcpdump
 
