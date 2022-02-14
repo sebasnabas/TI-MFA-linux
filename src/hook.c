@@ -8,6 +8,10 @@
 #include <net/protocol.h>
 #include <net/mpls.h>
 
+#ifdef DEBUG
+#include <linux/utsname.h>
+#endif
+
 #include "include/mpls.h"
 
 #ifndef KBUILD_MODNAME
@@ -31,6 +35,13 @@ static unsigned int timfa_hook(void *priv, struct sk_buff * skb,
                               const struct nf_hook_state * state)
 {
     struct mpls_shim_hdr *hdr;
+    unsigned entry;
+    u32 label;
+
+    if (!eth_p_mpls(skb->protocol))
+    {
+        goto accept;
+    }
 
     if (!pskb_may_pull(skb, sizeof(*hdr)))
 		goto accept;
@@ -39,11 +50,16 @@ static unsigned int timfa_hook(void *priv, struct sk_buff * skb,
 
     hdr = mpls_hdr(skb);
 
-    if (hdr != NULL)
+    if (hdr == NULL)
     {
-        // @TODO: calculate label correctly
-        // pr_debug("%s got mpls packet with label %u", state->in->name, MPLS_LABEL(hdr->label_stack_entry));
+        goto accept;
     }
+
+    entry = be32_to_cpu(hdr->label_stack_entry);
+    label = MPLS_LABEL(entry);
+
+    pr_debug("[%s]:[%s] Got mpls packet with label %u", utsname()->nodename, state->in->name, label);
+
     rcu_read_unlock();
 
 accept:
