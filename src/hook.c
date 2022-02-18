@@ -9,7 +9,10 @@
 #include <net/mpls.h>
 
 #ifdef DEBUG
-#include <linux/utsname.h>
+    #include <linux/utsname.h>
+    #define HOST_NAME utsname()->nodename
+#else
+    #define HOST_NAME ""
 #endif
 
 #include "include/mpls.h"
@@ -31,7 +34,7 @@ extern bool mpls_output_possible(struct net_device *dev);
 static struct nf_hook_ops *timfa_hooks;
 static int number_of_timfa_hooks;
 
-static unsigned int timfa_hook(void *priv, struct sk_buff * skb,
+static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
                               const struct nf_hook_state * state)
 {
     struct mpls_shim_hdr *hdr;
@@ -44,9 +47,10 @@ static unsigned int timfa_hook(void *priv, struct sk_buff * skb,
     }
 
     if (!pskb_may_pull(skb, sizeof(*hdr)))
-		goto accept;
+    {
+        goto accept;
 
-    rcu_read_lock();
+    }
 
     hdr = mpls_hdr(skb);
 
@@ -58,9 +62,7 @@ static unsigned int timfa_hook(void *priv, struct sk_buff * skb,
     entry = be32_to_cpu(hdr->label_stack_entry);
     label = MPLS_LABEL(entry);
 
-    pr_debug("[%s]:[%s] Got mpls packet with label %u", utsname()->nodename, state->in->name, label);
-
-    rcu_read_unlock();
+    pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u", HOST_NAME, state->in->name, label);
 
 accept:
     return NF_ACCEPT;
@@ -116,7 +118,8 @@ static int initialize_hooks(void)
             goto next_device;
         }
 
-        timfa_hooks[i].hook = timfa_hook;
+        // START Ingress
+        timfa_hooks[i].hook = timfa_ingress_hook;
         timfa_hooks[i].hooknum = NF_NETDEV_INGRESS;
         timfa_hooks[i].pf = NFPROTO_NETDEV;
         timfa_hooks[i].priority = NF_IP_PRI_LAST;
@@ -126,11 +129,11 @@ static int initialize_hooks(void)
 
         if (return_code < 0)
         {
-            pr_err("Registering failed for device %s, with %d\n", dev->name, return_code);
+            pr_err("Registering ingress hook failed for device %s, with %d\n", dev->name, return_code);
             return return_code;
         }
 
-        pr_debug("TI-MFA hook successfully registered on device: %s!\n", dev->name);
+        pr_debug("TI-MFA ingress hook successfully registered on device: %s!\n", dev->name);
         i++;
 
 next_device:
