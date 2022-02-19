@@ -9,54 +9,6 @@
         cmd: ip addr add "{{ loopback_ipv4_address }}" dev lo
       when: ansible_lo.ipv4_secondaries is undefined
 
-    - name: Update cache
-      ansible.builtin.apt:
-        update_cache: true
-
-    - name: Install necessary packages
-      ansible.builtin.apt:
-        pkg:
-          - linux-headers-5.10.0-10-amd64
-          - cmake
-          - gcc
-          - gpg
-          - tcpdump
-
-    - name: Add frrouting repo key
-      ansible.builtin.apt_key:
-        url: https://deb.frrouting.org/frr/keys.asc
-        state: present
-
-    - name: Add frrouting repo
-      ansible.builtin.apt_repository:
-        repo: deb https://deb.frrouting.org/frr bullseye frr-8
-        state: present
-
-    - name: Install frrouting
-      ansible.builtin.apt:
-        pkg:
-          - frr
-          - frr-pythontools
-
-    - name: Configure ip forwarding
-      ansible.posix.sysctl:
-        name: "{{ item }}"
-        value: 1
-        state: present
-        sysctl_set: true
-        reload: true
-      loop:
-        - net.ipv4.conf.all.forwarding
-        - net.ipv6.conf.all.forwarding
-
-    - name: Load mpls modules
-      community.general.modprobe:
-        name: "{{ item }}"
-        state: present
-      loop:
-        - mpls_router
-        - mpls_iptunnel
-
     - name: Configure mpls forwarding
       ansible.posix.sysctl:
         name: "net.mpls.conf.{{ item }}.input"

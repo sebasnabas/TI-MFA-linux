@@ -1,0 +1,100 @@
+---
+- hosts: all
+  become: true
+  become_method: sudo
+  gather_facts: true
+  tasks:
+    - name: Add unstable repo
+      ansible.builtin.apt_repository:
+        repo: deb http://deb.debian.org/debian unstable main
+        state: present
+
+    - name: Set apt preferences
+      ansible.builtin.blockinfile:
+        path: /etc/apt/preferences.d/unstable
+        create: true
+        block: |
+          Package: *
+          Pin: release o=Debian,a=unstable
+          Pin-Priority: 10
+
+    - name: Update cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install 5.16 kernel
+      ansible.builtin.apt:
+        pkg:
+          - linux-image-5.16.0-1-amd64
+          - linux-headers-5.16.0-1-amd64
+
+    - name: Remove unstable repo
+      ansible.builtin.apt_repository:
+        repo: deb http://deb.debian.org/debian unstable main
+        state: absent
+
+    - name: Remove apt preferences
+      ansible.builtin.file:
+        path: /etc/apt/preferences.d/unstable
+        state: absent
+
+    - name: Make mpls modules load automatically
+      ansible.builtin.blockinfile:
+        create: true
+        dest: /etc/modules-load.d/mpls.conf
+        block: |
+          mpls_router
+          mpls_iptunnel
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Reboot
+      ansible.builtin.reboot:
+
+    - name: Configure ip forwarding
+      ansible.posix.sysctl:
+        name: "{{ item }}"
+        value: 1
+        state: present
+        sysctl_set: true
+        reload: true
+      loop:
+        - net.ipv4.conf.all.forwarding
+        - net.ipv6.conf.all.forwarding
+
+    - name: Load mpls modules
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - mpls_router
+        - mpls_iptunnel
+
+    - name: Update cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install necessary packages
+      ansible.builtin.apt:
+        pkg:
+          - cmake
+          - gcc
+          - gpg
+          - tcpdump
+
+    - name: Add frrouting repo key
+      ansible.builtin.apt_key:
+        url: https://deb.frrouting.org/frr/keys.asc
+        state: present
+
+    - name: Add frrouting repo
+      ansible.builtin.apt_repository:
+        repo: deb https://deb.frrouting.org/frr bullseye frr-8
+        state: present
+
+    - name: Install frrouting
+      ansible.builtin.apt:
+        pkg:
+          - frr
+          - frr-pythontools
