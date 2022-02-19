@@ -113,7 +113,9 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
         HOST_NAME, skb->dev->name, skb->dev->dev_addr, ethh->h_dest, label);
 
     // Set to true to avoid recursion
+    #ifdef CONFIG_NETFILTER_EGRESS
     nf_skip_egress(skb, true);
+    #endif
 
     // This fails
     if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
