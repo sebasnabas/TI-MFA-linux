@@ -3,6 +3,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/net.h>
+#include <linux/netdevice.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
 #include <net/protocol.h>
@@ -68,13 +69,13 @@ accept:
     return NF_ACCEPT;
 }
 
-#ifdef CONFIG_NETFILTER_EGRESS
 static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
                               const struct nf_hook_state * state)
 {
     struct mpls_shim_hdr *hdr;
     unsigned entry;
     u32 label;
+    struct ethhdr *ethh;
 
     if (!eth_p_mpls(skb->protocol))
     {
@@ -97,12 +98,36 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
     entry = be32_to_cpu(hdr->label_stack_entry);
     label = MPLS_LABEL(entry);
 
-    pr_debug("[%s]:[%s -> %s] EGRESS: Got mpls packet with label %u", HOST_NAME, state->in->name, state->out->name, label);
+    /*
+    * @TODO:
+    * [X] Get outgoing dev
+    * [X] Get mac of adjacent machine on outgoing dev
+    * [ ] Check if packet is lost / outgoing dev is down
+    * [ ] Add link failure to packet header
+    */
+
+    // skb has ethernet header
+    ethh = eth_hdr(skb);
+
+    pr_debug("[%s]:[(%s) %pM -> %pM] EGRESS: Got mpls packet with label %u.",
+        HOST_NAME, skb->dev->name, skb->dev->dev_addr, ethh->h_dest, label);
+
+    // Set to true to avoid recursion
+    nf_skip_egress(skb, true);
+
+    // This fails
+    if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
+    {
+        pr_debug("Sending failed on [%s]. Dropping...", skb->dev->name);
+        return NF_DROP;
+    }
+    kfree(skb);
+    return NF_STOLEN;
+    // return NF_DROP;
 
 accept:
     return NF_ACCEPT;
 }
-#endif
 
 static int get_number_of_mpls_capable_net_devices(void)
 {
