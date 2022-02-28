@@ -56,3 +56,7 @@ dkms.conf
 
 # packet dumps
 *.dump
+
+# Editor configurations
+.nvimrc
+.vscode/
