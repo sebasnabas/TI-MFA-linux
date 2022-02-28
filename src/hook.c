@@ -50,110 +50,10 @@ static u32 number_of_timfa_hooks;
 *       & set link-failure header
 */
 
-static const struct nla_policy rtm_mpls_policy[RTA_MAX+1] = {
-	[RTA_DST]		= { .type = NLA_U32 },
-};
-
-// #define BUFFER_SIZE 4095
-
-/* From iproute2 include/netlink.h */
-static inline __u32 rta_getattr_u32(const struct rtattr *rta)
-{
-	return *(__u32 *)RTA_DATA(rta);
-}
-
-/* From iproute2 ip/ip_common.h */
-static inline int rtm_get_table(struct rtmsg *r, struct rtattr **tb)
-{
-	__u32 table = r->rtm_table;
-
-	if (tb[RTA_TABLE])
-		table = rta_getattr_u32(tb[RTA_TABLE]);
-	return table;
-}
-
-/* From iproute2 lib/libnetlink.c */
-static int parse_rtattr_flags(struct rtattr *tb[], int max, struct rtattr *rta,
-		       int len, unsigned short flags)
-{
-	unsigned short type;
-
-	memset(tb, 0, sizeof(struct rtattr *) * (max + 1));
-	while (RTA_OK(rta, len)) {
-		type = rta->rta_type & ~flags;
-		if ((type <= max) && (!tb[type]))
-			tb[type] = rta;
-		rta = RTA_NEXT(rta, len);
-	}
-	if (len)
-		pr_err("!!!Deficit %d, rta_len=%d\n", len, rta->rta_len);
-	return 0;
-}
-static int parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
-{
-	return parse_rtattr_flags(tb, max, rta, len, 0);
-}
-
-/* From iproute2 lib/utils.c */
-static int af_bit_len(int af)
-{
-	switch (af) {
-	case AF_INET6:
-		return 128;
-	case AF_INET:
-		return 32;
-	case AF_MPLS:
-		return 20;
-	}
-
-	return 0;
-}
-
 static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
 {
-    /* ------ iproute2 iproute.c:print_route ------ */
-    // struct rtmsg *route_entry = NLMSG_DATA(nlh);
-    // int len = nlh->nlmsg_len;
-    // struct rtattr *route_attribute[RTA_MAX+1];
-    // int family, host_len;
-    // __u32 table;
-
-    // if (nlh->nlmsg_type != RTM_NEWROUTE && nlh->nlmsg_type != RTM_DELROUTE) {
-    //     pr_err("Not a route: %08x %08x %08x\n",
-    //         nlh->nlmsg_len, nlh->nlmsg_type, nlh->nlmsg_flags);
-    // }
-
-    // len -= NLMSG_LENGTH(sizeof(*route_entry));
-    // if (len < 0)
-    // {
-    //     pr_err("BUG: wrong nlmsg len %d\n", len);
-    // }
-
-    // host_len = af_bit_len(route_entry->rtm_family);
-
-    // parse_rtattr(route_attribute, RTA_MAX, RTM_RTA(route_entry), len);
-    // table = rtm_get_table(route_entry, route_attribute);
-
-    // // if (table != RT_TABLE_MAIN)
-    // // {
-    // //     pr_debug("Different routing table %u", table);
-    // //     return;
-    // // }
-
-    // if (nlh->nlmsg_type == RTM_DELROUTE)
-    // {
-    //     pr_debug("Got DELROUTE");
-    // }
-    /* -------------------------------------------- */
-
-    /* ------ Stackoverflow ------ */
     struct rtmsg *route_entry;
     struct rtattr *route_attribute;
-    u8 label_count;
-    int max_labels = 3;
-    u32 label[max_labels];
-    // int index;
-    // int err;
     int route_attribute_len = 0;
     char *destination_address = kmalloc(32, GFP_KERNEL);
     char *gateway_address = kmalloc(32, GFP_KERNEL);
@@ -162,7 +62,6 @@ static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
 
     if (route_entry->rtm_table != RT_TABLE_MAIN)
     {
-        // pr_debug("Different routing table %u", route_entry->rtm_table);
         return;
     }
 
@@ -173,7 +72,6 @@ static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
     for (; RTA_OK(route_attribute, route_attribute_len);
             route_attribute = RTA_NEXT(route_attribute, route_attribute_len))
     {
-        // pr_debug("Route attribute: %d", route_attribute->rta_type);
         if (route_attribute->rta_type == RTA_DST)
         {
             destination_address = RTA_DATA(route_attribute);
@@ -191,98 +89,15 @@ static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
         {
             pr_debug("Deleting route to destination --> %pI4 and gateway %pI4\n",
                 destination_address, gateway_address);
-
-            // if (nla_get_labels(route_attribute, max_labels, &label_count, label, NULL))
-            // {
-            //     pr_debug("Got route deletion update with label %u", label[0]);
-            //     break;
-            // }
         }
         if (nlh->nlmsg_type == RTM_NEWROUTE)
             pr_debug("Adding route to destination --> %pI4 and gateway %pI4\n",
                     destination_address, gateway_address);
     }
-    /* -------------------------------- */
 
-    // if (nlmsg_parse(nlh, sizeof(*rtm), tb, RTA_MAX, rtm_mpls_policy, NULL))
-    // {
-    //     pr_err("Could not parse nlmsg");
-    //     goto out;
-    // }
-
-    // rtm = nlmsg_data(nlh);
-
-    // pr_debug("Parsing attributes now");
-    // for (index = 0; index <= RTA_MAX; index++) {
-    //     struct nlattr *nla = tb[index];
-    //     if (!nla)
-    //         continue;
-
-    //     pr_debug("Got index %d", index);
-    //     switch (index)
-    //     {
-    //         case RTM_DELROUTE:
-    //             if (nla_get_labels(nla, max_labels, &label_count, label, NULL))
-    //             {
-    //                 pr_debug("Got route deletion update with label %u", label[0]);
-    //                 break;
-    //             }
-    //             break;
-
-    //         case RTM_NEWROUTE:
-    //             break;
-
-    //         default:
-    //             continue;
-    //     }
-    // }
-
-    goto out;
-
-    // struct mpls_route_config *cfg;
-    // unsigned index;
-    // struct net *net;
-    // struct mpls_route __rcu **platform_label;
-	// struct mpls_route *rt;
-
-    // cfg = kzalloc(sizeof(*cfg), GFP_KERNEL);
-    // if (!cfg)
-    //     return -ENOMEM;
-
-    // err = rtm_to_route_config(skb, nlh, cfg, extack);
-    // if (err < 0)
-    //     goto out;
-
-    // index = cfg->rc_label;
-    // net = cfg->rc_nlinfo.nl_net;
-
-    // ASSERT_RTNL();
-
-    // platform_label = rtnl_dereference(net->mpls.platform_label);
-    // rt = rtnl_dereference(platform_label[index]);
-
-    // if ((deleted_nh = krealloc_array(deleted_nh, ++number_deleted_routes,
-    //                                      sizeof(struct mpls_direct_nh), GFP_KERNEL)
-    //     ) == NULL)
-    // {
-    //     pr_crit("Realloc for deleted_routes failed");
-    //     err = -ENOMEM;
-    //     goto out;
-    // }
-
-    // deleted_nh[number_deleted_routes - 1] = rt->rt_nh[0];
-
-    // pr_debug("New deleted direct next hop with label %u added",
-    //          deleted_nh[number_deleted_routes - 1].nh_label[0]
-    // );
-
-    // return mpls_rtm_delroute(skb, nlh, extack);
-
-out:
     return;
 }
 
-// static void rcv_netlink_msg(struct sk_buff *skb)
 static void rcv_netlink_msg(struct sock *sk)
 {
     struct sk_buff *skb = NULL;
@@ -515,7 +330,6 @@ static void release_socket(void)
 {
     if (nl_sk)
     {
-        // kernel_sock_shutdown(nl_sk, SHUT_RDWR);
         sock_release(nl_sk);
     }
 }
@@ -523,16 +337,10 @@ static void release_socket(void)
 static int __init timfa_init(void)
 {
     int err;
-    // struct netlink_kernel_cfg cfg = {
-    //     .groups = RTNLGRP_MPLS_ROUTE,
-    //     .input = rcv_netlink_msg,
-    // };
     struct sockaddr_nl addr;
 
     pr_info("TI-MFA started\n");
-    /* create socket to monitor routing table changes
-    * SOCK_RAW means we don't need to call kernel_connect() (?)
-    */
+
     err = sock_create_kern(&init_net, AF_NETLINK, SOCK_RAW, NETLINK_ROUTE, &nl_sk);
     if (err)
     {
@@ -542,7 +350,6 @@ static int __init timfa_init(void)
 
     addr.nl_family = AF_NETLINK;
     addr.nl_pid    = 0;
-    // addr.nl_groups = RTNLGRP_MPLS_NETCONF;
 
     err = kernel_bind(nl_sk, (struct sockaddr *) &addr, sizeof(addr));
     if (err)
@@ -580,7 +387,6 @@ static void __exit timfa_exit(void)
 
     kfree(timfa_hooks);
 
-    // netlink_kernel_release(nl_sk);
     release_socket();
     pr_debug("Released netlink socket");
 
