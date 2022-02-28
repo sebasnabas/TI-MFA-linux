@@ -1,8 +1,12 @@
 #ifndef TI_MFA_UTILS_H
 #define TI_MFA_UTILS_H
 
-/* Debug */
-void dmesg(const char * format, ...);
-void dmesg_err(const char * format, ...);
+
+#ifdef DEBUG
+    #include <linux/utsname.h>
+    #define HOST_NAME utsname()->nodename
+#else
+    #define HOST_NAME ""
+#endif
 
 #endif /* TI_MFA_UTILS_H */
