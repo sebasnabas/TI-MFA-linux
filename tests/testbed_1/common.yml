@@ -41,7 +41,6 @@
                segment-routing local-block 5000 5999
                segment-routing node-msd 8
                segment-routing prefix {{loopback_ipv4_address }}/32 index 1100
-               fast-reroute ti-lfa
                router-info area
               !
               interface lo
@@ -78,7 +77,6 @@
                segment-routing global-block 16000 23999
                segment-routing node-msd 8
                segment-routing prefix {{loopback_ipv4_address }}/32 index 1021
-               fast-reroute ti-lfa
                router-info area
               !
               interface lo
