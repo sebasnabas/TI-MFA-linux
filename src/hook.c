@@ -13,6 +13,7 @@
 #include <net/sock.h>
 
 #include "include/mpls.h"
+#include "include/netlink.h"
 #include "include/ti_mfa_algo.h"
 #include "include/utils.h"
 
@@ -38,110 +39,6 @@ static u32 number_of_timfa_hooks;
 // save deleted next_hops
 // static struct mpls_nh *deleted_nh;
 // static u32 number_deleted_routes;
-
-/*
-* @TODO:
-* Either:
-// *   - pre-routing hook (INGRESS) -> lookup routing decision beforehand
-// *       & set link-failure header
-// * or
-* @TODO:
-*   - post-routing hook (EGRESS) -> get past routing decision
-*       & set link-failure header
-*/
-
-static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
-{
-    struct rtmsg *route_entry;
-    struct rtattr *route_attribute;
-    int route_attribute_len = 0;
-    char *destination_address = kmalloc(32, GFP_KERNEL);
-    char *gateway_address = kmalloc(32, GFP_KERNEL);
-
-    route_entry = (struct rtmsg *) NLMSG_DATA(nlh);
-
-    if (route_entry->rtm_table != RT_TABLE_MAIN)
-    {
-        return;
-    }
-
-    route_attribute = (struct rtattr *) RTM_RTA(route_entry);
-
-    route_attribute_len = RTM_PAYLOAD(nlh);
-
-    for (; RTA_OK(route_attribute, route_attribute_len);
-            route_attribute = RTA_NEXT(route_attribute, route_attribute_len))
-    {
-        if (route_attribute->rta_type == RTA_DST)
-        {
-            destination_address = RTA_DATA(route_attribute);
-            pr_debug("Destination address: %pI4\n",
-                destination_address);
-        }
-        if (route_attribute->rta_type == RTA_GATEWAY)
-        {
-            gateway_address = RTA_DATA(route_attribute);
-            pr_debug("Gateway address: %pI4\n",
-                gateway_address);
-        }
-
-        if (nlh->nlmsg_type == RTM_DELROUTE)
-        {
-            pr_debug("Deleting route to destination --> %pI4 and gateway %pI4\n",
-                destination_address, gateway_address);
-        }
-        if (nlh->nlmsg_type == RTM_NEWROUTE)
-            pr_debug("Adding route to destination --> %pI4 and gateway %pI4\n",
-                    destination_address, gateway_address);
-    }
-
-    return;
-}
-
-static void rcv_netlink_msg(struct sock *sk)
-{
-    struct sk_buff *skb = NULL;
-    struct nlmsghdr *nlh = NULL;
-    int received_bytes = 0;
-    int err = 0;
-
-    skb = skb_recv_datagram(sk, 0, 0, &err);
-    if (err)
-    {
-        pr_err("Failed on skb_rev_datagram(), err=%d", -err);
-        skb_free_datagram(sk, skb);
-        return;
-    }
-
-    received_bytes = skb->len;
-
-    if (received_bytes < 0)
-    {
-        pr_err("Got error on recv");
-    }
-
-    // From https://stackoverflow.com/questions/27322786/listening-for-netlink-broadcasts-in-a-kernel-module
-    nlh = (struct nlmsghdr *) skb->data;
-    if (!nlh || !NLMSG_OK(nlh, received_bytes))
-    {
-        pr_err("Invalid netlink header data.");
-        return;
-    }
-
-    if (nlh->nlmsg_type == NLMSG_DONE)
-    {
-        return;
-    }
-
-    for (; NLMSG_OK(nlh, received_bytes); nlh = NLMSG_NEXT(nlh, received_bytes))
-    {
-        parse_nl_msg(nlh, received_bytes);
-    }
-
-
-    skb_free_datagram(sk, skb);
-}
-
 
 static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
                               const struct nf_hook_state * state)

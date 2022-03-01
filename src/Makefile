@@ -1,5 +1,5 @@
 obj-m := ti-mfa.o
-ti-mfa-m := hook.o
+ti-mfa-m := hook.o netlink.o ti_mfa_algo.o
 
 INCLUDES = -I $(PWD)/include
 CFLAGS = "$(INCLUDES) -D DEBUG -Wall"
