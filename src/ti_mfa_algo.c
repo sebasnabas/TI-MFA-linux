@@ -1,12 +1,16 @@
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
-#include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/net.h>
 #include <linux/netdevice.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
+
+#ifdef CONFIG_NETFILTER_EGRESS
 #include <linux/netfilter_netdev.h>
+#endif
+
 #include <net/protocol.h>
 #include <net/mpls.h>
 
