@@ -31,8 +31,7 @@ MODULE_LICENSE("GPL");
 
 extern bool mpls_output_possible(struct net_device *dev);
 
-struct socket *nl_sk = NULL;
-
+static struct socket *nl_sk = NULL;
 static struct nf_hook_ops *timfa_hooks;
 static u32 number_of_timfa_hooks;
 
@@ -68,7 +67,7 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
     entry = be32_to_cpu(hdr->label_stack_entry);
     label = MPLS_LABEL(entry);
 
-    pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u", HOST_NAME, state->in->name, label);
+    pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, label);
 
 accept:
     return NF_ACCEPT;
@@ -99,7 +98,7 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
 
     if (run_timfa(skb) != 0)
     {
-        pr_debug("ti-mfa failed on [%s]. Dropping...", skb->dev->name);
+        pr_debug("ti-mfa failed on [%s]. Dropping...\n", skb->dev->name);
         return NF_DROP;
     }
 
@@ -133,7 +132,7 @@ static int get_number_of_mpls_capable_net_devices(void)
 
     rcu_read_unlock();
 
-    pr_debug("Found %d mpls capable devices", net_device_count);
+    pr_debug("Found %d mpls capable devices\n", net_device_count);
     return net_device_count;
 }
 
@@ -146,7 +145,7 @@ static int initialize_hooks(void)
     return_code = 0;
     i = 0;
 
-    pr_debug("Found %d mpls capable net devices", number_of_mpls_devices);
+    pr_debug("Found %d mpls capable net devices\n", number_of_mpls_devices);
 
     timfa_hooks = kmalloc_array(number_of_mpls_devices * 2, sizeof(struct nf_hook_ops), GFP_KERNEL);
 
@@ -208,7 +207,7 @@ next_device:
 
     number_of_timfa_hooks = i;
 
-    pr_debug("Registering %d hooks succeeded", number_of_timfa_hooks);
+    pr_debug("Registering %d hooks succeeded\n", number_of_timfa_hooks);
 
     return return_code;
 }
