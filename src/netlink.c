@@ -1,8 +1,10 @@
 #include <linux/mpls_iptunnel.h>
+#include <linux/netdevice.h>
 #include <linux/nexthop.h>
 
 #include "include/mpls.h"
 #include "include/netlink.h"
+#include "include/ti_mfa_algo.h"
 
 /* From iproute2 lib/libnetlink.c */
 static int parse_rtattr_flags(struct rtattr *tb[], int max, struct rtattr *rta,
@@ -22,7 +24,7 @@ static int parse_rtattr_flags(struct rtattr *tb[], int max, struct rtattr *rta,
 	return 0;
 }
 
-static void parse_encap_mpls(struct rtattr *entry)
+static u32 parse_encap_mpls(struct rtattr *entry)
 {
     struct rtattr *rta_table[MPLS_IPTUNNEL_MAX+1];
     u32 label;
@@ -34,12 +36,15 @@ static void parse_encap_mpls(struct rtattr *entry)
         parse_encap_mpls_labels(RTA_DATA(rta_table[MPLS_IPTUNNEL_DST]), &label,
                                 RTA_PAYLOAD(rta_table[MPLS_IPTUNNEL_DST]));
 
-        pr_debug("Got mpls dst: %u\n", label);
+        return label;
     }
+
+    return -1;
 }
 
 static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
 {
+    struct net_device *dev;
     struct nhmsg *nhm;
     struct rtattr *rta_table[RTA_MAX+1];
     int len;
@@ -47,7 +52,7 @@ static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
     /*
     * @TODO:
     *   - [X] parse deleted hop messages and display mpls label
-    *   - [ ] save deleted hops together with their MPLS dst labels
+    *   - [X] save deleted hops together with their MPLS dst labels
     *   - [ ] removed hops from delete list on RTM_NEWHOP
     */
 
@@ -63,9 +68,25 @@ static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
 
     if (rta_table[NHA_GATEWAY] && rta_table[NHA_ENCAP] && rta_getattr_u16(rta_table[NHA_ENCAP_TYPE]) == LWTUNNEL_ENCAP_MPLS)
     {
-        // @TODO: print doesn't work with IPv6 addresses
-        pr_debug("NH gateway: %pI4\n", RTA_DATA(rta_table[NHA_GATEWAY]));
-        parse_encap_mpls(rta_table[NHA_ENCAP]);
+        struct ti_mfa_nh deleted_nh;
+        u32 label = parse_encap_mpls(rta_table[NHA_ENCAP]);
+
+        if (label < 0)
+        {
+            return;
+        }
+
+        dev = dev_get_by_index(&init_net, rta_getattr_u32(rta_table[NHA_OIF]));
+
+        if (dev == NULL)
+        {
+            pr_err("Could not find net_device");
+            return;
+        }
+        deleted_nh.nh_dev = dev;
+
+        deleted_nhs[label] = deleted_nh;
+        pr_debug("Got mpls dst: %u\n", label);
     }
 }
 

@@ -18,6 +18,8 @@
 #include "include/ti_mfa_algo.h"
 #include "include/utils.h"
 
+struct ti_mfa_nh *deleted_nhs;
+
 // static int ti_mfa_calculate_label_stack(void)
 // {
 //     // 1) Flush label stack except for destination t
@@ -38,11 +40,10 @@
 int run_timfa(struct sk_buff *skb)
 {
     struct mpls_shim_hdr *hdr;
+    struct ti_mfa_nh deleted_nh;
     unsigned entry;
     u32 label;
     struct ethhdr *ethh;
-    struct rtable *rt; // routing table
-    struct net *nt; // net namespace
 
     /* Create new skbuff, because sending original skb
     * via dev_queue_xmit() causes system crash
@@ -74,13 +75,11 @@ int run_timfa(struct sk_buff *skb)
     * @TODO:
     * [X] Get outgoing dev
     * [X] Get mac of adjacent machine on outgoing dev
-    * [ ] Check if packet is lost / outgoing dev is down
     * [ ] Add link failure to packet header
     */
 
-   // Get routing information
-    // nt = dev_net(skb->dev);
-    // rt  = ip_route_output();
+    deleted_nh = deleted_nhs[label];
+    pr_debug("Got deleted next hop with dev [%s]", deleted_nh.nh_dev->name);
 
     // Sending packet to detect link failure doesn't work, because routing was already done
     // Avoid recursion

@@ -35,16 +35,14 @@ static struct socket *nl_sk = NULL;
 static struct nf_hook_ops *timfa_hooks;
 static u32 number_of_timfa_hooks;
 
-// save deleted next_hops
-// static struct mpls_nh *deleted_nh;
-// static u32 number_deleted_routes;
-
 static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
-                              const struct nf_hook_state * state)
+                                       const struct nf_hook_state * state)
 {
     struct mpls_shim_hdr *hdr;
     unsigned entry;
     u32 label;
+
+    // @TODO: remove ti-mfa header if not mpls -> pen-ultimate hop popping
 
     if (!eth_p_mpls(skb->protocol))
     {
@@ -102,8 +100,8 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
         return NF_DROP;
     }
 
-    // kfree(skb);
-    // return NF_STOLEN;
+    kfree(skb);
+    return NF_STOLEN;
 
 accept:
     return NF_ACCEPT;
@@ -234,6 +232,11 @@ static int __init timfa_init(void)
 {
     int err;
     struct sockaddr_nl addr;
+    int labels_total = init_net.mpls.platform_labels;
+
+    deleted_nhs = kmalloc_array(labels_total, sizeof(struct ti_mfa_nh), GFP_KERNEL);
+
+    memset(deleted_nhs, 0, labels_total * sizeof(struct ti_mfa_nh));
 
     pr_info("TI-MFA started\n");
 
@@ -267,6 +270,7 @@ out:
     return err;
 
 out_release:
+    kfree(deleted_nhs);
     release_socket();
     goto out;
 
@@ -278,6 +282,8 @@ out_unregister:
 static void __exit timfa_exit(void)
 {
     pr_debug("TI-MFA shutting down\n");
+
+    kfree(deleted_nhs);
 
     unregister_hooks();
 

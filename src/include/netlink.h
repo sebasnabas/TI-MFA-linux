@@ -19,6 +19,10 @@ static inline __u16 rta_getattr_u16(const struct rtattr *rta)
 {
 	return *(__u16 *)RTA_DATA(rta);
 }
+static inline __u32 rta_getattr_u32(const struct rtattr *rta)
+{
+	return *(__u32 *)RTA_DATA(rta);
+}
 
 void rcv_netlink_msg(struct sock *sk);
 
