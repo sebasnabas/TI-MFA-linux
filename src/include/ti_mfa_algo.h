@@ -14,7 +14,7 @@ struct ti_mfa_nh {
 struct ti_mfa_hdr {
     u8 link_source[ETH_ALEN];
     u8 link_dest[ETH_ALEN];
-};
+} __attribute__((packed));
 
 int run_timfa(struct sk_buff *skb);
 

@@ -39,47 +39,74 @@ struct ti_mfa_nh *deleted_nhs;
 
 int run_timfa(struct sk_buff *skb)
 {
-    struct mpls_shim_hdr *hdr;
-    struct ti_mfa_nh deleted_nh;
-    unsigned entry;
-    u32 label;
+    struct mpls_shim_hdr *mpls_hdr_entry;
+    struct mpls_entry_decoded mpls_entry;
+    struct ti_mfa_nh *deleted_nh;
+    u32 label = 0;
     struct ethhdr *ethh;
-
+    struct ti_mfa_hdr *ti_mfa_h;
+    int err = 0;
+    int i = 0;
     /* Create new skbuff, because sending original skb
     * via dev_queue_xmit() causes system crash
     */
     struct sk_buff *new_skb;
+    struct mpls_shim_hdr *new_mpls_hdr_entry ;
+    struct ethhdr *new_eth_hdr;
 
-    new_skb = skb_copy(skb, GFP_KERNEL);
+    // Get pointer to first mpls stack entry
+    mpls_hdr_entry = mpls_hdr(skb);
+
+    if (mpls_hdr_entry == NULL)
+    {
+        err = -1;
+        goto out_free;
+    }
+
+    new_skb = skb_copy_expand(skb, sizeof(struct ti_mfa_hdr) + skb_headroom(skb), 0, GFP_KERNEL);
 
     if (new_skb == NULL)
     {
-        pr_debug("Copying skb failed on [%s]", skb->dev->name);
+        pr_debug("Copying skb failed on [%s]\n", skb->dev->name);
         return -1;
     }
 
-    hdr = mpls_hdr(new_skb);
+    ethh = eth_hdr(skb);
+    skb_pull(new_skb, sizeof(struct ethhdr));
+    pr_debug("eth header pulled");
 
-    if (hdr == NULL)
+    skb_pull(new_skb, sizeof(struct mpls_shim_hdr));
+    pr_debug("mpls header pulled\n");
+
+    // Set TI-MFA header
+    ti_mfa_h = skb_push(new_skb, sizeof(struct ti_mfa_hdr));
+
+    for (i = 0; i < ETH_ALEN; i++)
     {
-        return -1;
+        ti_mfa_h->link_dest[i] = ethh->h_dest[i];
+        ti_mfa_h->link_source[i] = ethh->h_source[i];
     }
 
-    entry = be32_to_cpu(hdr->label_stack_entry);
-    label = MPLS_LABEL(entry);
-    ethh = eth_hdr(new_skb);
+    // deleted_nh = deleted_nhs[label];
+    // if (deleted_nh != NULL)
+    // {
+    //     pr_debug("Got deleted next hop with dev [%s]", deleted_nh->nh_dev->name);
+    // }
 
-    pr_debug("[%s]:[(%s) %pM -> %pM] EGRESS: new skb with label %u.",
-        HOST_NAME, new_skb->dev->name, new_skb->dev->dev_addr, ethh->h_dest, label);
-    /*
-    * @TODO:
-    * [X] Get outgoing dev
-    * [X] Get mac of adjacent machine on outgoing dev
-    * [ ] Add link failure to packet header
+    /* @TODO:
+    * doesn't work for stack size > 1
     */
+    // while (!mpls_entry.bos)
+    // {
+        new_mpls_hdr_entry = skb_push(new_skb, sizeof(struct mpls_shim_hdr));
+        memcpy(new_mpls_hdr_entry, mpls_hdr_entry, sizeof(struct mpls_shim_hdr));
+    // // }
 
-    deleted_nh = deleted_nhs[label];
-    pr_debug("Got deleted next hop with dev [%s]", deleted_nh.nh_dev->name);
+    pr_debug("Set mpls header\n");
+
+    new_eth_hdr = skb_push(new_skb, sizeof(struct ethhdr));
+    memcpy(new_eth_hdr, ethh, sizeof(struct ethhdr));
+    pr_debug("Set eth header\n");
 
     // Sending packet to detect link failure doesn't work, because routing was already done
     // Avoid recursion
@@ -87,12 +114,20 @@ int run_timfa(struct sk_buff *skb)
     nf_skip_egress(new_skb, true);
     #endif
 
+    pr_debug("[%s]:[(%s) %pM -> %pM] EGRESS: new skb with label %u.",
+        HOST_NAME, new_skb->dev->name, new_skb->dev->dev_addr, ethh->h_dest, label);
     pr_debug("Sending on [%s]...", new_skb->dev->name);
 
     if (dev_queue_xmit(new_skb) != NET_XMIT_SUCCESS)
     {
         pr_debug("Sending failed on [%s]", new_skb->dev->name);
-        return -1;
+        err = -1;
+        goto out_free;
     }
-    return 0;
+
+    return err;
+
+out_free:
+    kfree_skb(new_skb);
+    return err;
 }
