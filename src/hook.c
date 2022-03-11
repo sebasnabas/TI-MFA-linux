@@ -39,10 +39,7 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
                                        const struct nf_hook_state * state)
 {
     struct mpls_shim_hdr *hdr;
-    unsigned entry;
-    u32 label;
-
-    // @TODO: remove ti-mfa header if not mpls -> pen-ultimate hop popping
+    struct mpls_entry_decoded mpls_entry;
 
     if (!eth_p_mpls(skb->protocol))
     {
@@ -62,10 +59,48 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
         goto accept;
     }
 
-    entry = be32_to_cpu(hdr->label_stack_entry);
-    label = MPLS_LABEL(entry);
+    mpls_entry = mpls_entry_decode(hdr);
 
-    pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, label);
+    pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
+
+    // @TODO: remove ti-mfa header if last mpls label -> pen-ultimate hop popping
+    if (mpls_entry.bos)
+    {
+        int err = 0;
+        struct ethhdr *ethh = eth_hdr(skb);
+        struct ti_mfa_hdr *ti_mfa_h;
+        struct ethhdr *new_ethhdr;
+        struct mpls_shim_hdr *new_mpls_hdr;
+
+        int mac_len = skb->mac_len;
+
+        err = skb_ensure_writable(skb, ETH_HLEN);
+        if (unlikely(err))
+            return err;
+        // skb_pull(skb, sizeof(*ethh));
+        // pr_debug("eth header pulled\n");
+
+        // skb_pull(skb, sizeof(*hdr));
+        // pr_debug("mpls header pulled\n");
+
+        if (!pskb_may_pull(skb, sizeof(*ti_mfa_h)))
+        {
+            pr_err("No timfa header. Dropping\n");
+            return NF_DROP;
+        }
+
+        ti_mfa_h = skb_pull(skb, sizeof(*ti_mfa_h));
+        pr_debug("ti-mfa header pulled\n");
+        pr_debug("Src: %pM; Dst: %pM", ti_mfa_h->link_source, ti_mfa_h->link_dest);
+
+        new_ethhdr = skb_push(skb, sizeof(*ethh));
+        memcpy(new_ethhdr, ethh, sizeof(*ethh));
+
+        new_mpls_hdr = skb_push(skb, sizeof(*hdr));
+        memcpy(new_mpls_hdr, hdr, sizeof(*hdr));
+
+        pr_debug("New mpls and ethernet header set");
+    }
 
 accept:
     return NF_ACCEPT;
@@ -100,7 +135,6 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
         return NF_DROP;
     }
 
-    kfree(skb);
     return NF_STOLEN;
 
 accept:
@@ -234,9 +268,7 @@ static int __init timfa_init(void)
     struct sockaddr_nl addr;
     int labels_total = init_net.mpls.platform_labels;
 
-    deleted_nhs = kmalloc_array(labels_total, sizeof(struct ti_mfa_nh), GFP_KERNEL);
-
-    memset(deleted_nhs, 0, labels_total * sizeof(struct ti_mfa_nh));
+    deleted_nhs = kmalloc_array(labels_total, sizeof(struct ti_mfa_nh *), GFP_KERNEL);
 
     pr_info("TI-MFA started\n");
 
