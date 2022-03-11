@@ -4,7 +4,7 @@
 #include "mpls.h"
 
 // save deleted next_hops
-extern struct ti_mfa_nh *deleted_nhs;
+extern struct ti_mfa_nh **deleted_nhs;
 
 struct ti_mfa_nh {
     struct net_device  *nh_dev;
@@ -12,8 +12,9 @@ struct ti_mfa_nh {
 };
 
 struct ti_mfa_hdr {
-    u8 link_source[ETH_ALEN];
-    u8 link_dest[ETH_ALEN];
+    unsigned char link_source[ETH_ALEN];
+    unsigned char link_dest[ETH_ALEN];
+    u8 bos;
 } __attribute__((packed));
 
 int run_timfa(struct sk_buff *skb);

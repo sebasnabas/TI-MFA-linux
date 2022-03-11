@@ -1,29 +1,16 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/mpls.h>
+#include <net/mpls.h>
 
 #include "utils.h"
-/**
- * dmesg()
- * Wrapping printk to add module name
- */
-void dmesg( const char * format, ...)
-{
-    va_list ap;
-    va_start(ap, format);
-    printk("[TI-MFA]");
-    vprintk(format, ap);
-    va_end(ap);
-}
 
-/**
- * dmesg_err()
- * Wrapping printk to add module name and error string
- */
-void dmesg_err( const char * format, ...)
+bool is_not_mpls(struct sk_buff *skb)
 {
-    va_list ap;
-    va_start(ap, format);
-    printk("[TI-MFA][Error]");
-    vprintk(format, ap);
-    va_end(ap);
+    if (!pskb_may_pull(skb, sizeof(struct mpls_shim_hdr)) || mpls_hdr(skb) == NULL)
+    {
+        return true;
+    }
+
+    return false;
 }
