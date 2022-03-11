@@ -1,0 +1,160 @@
+---
+- hosts: all
+  become: true
+  become_method: sudo
+  gather_facts: true
+  tasks:
+    - name: Add loopback interface
+      ansible.builtin.shell:
+        cmd: ip addr add "{{ loopback_ipv4_address }}" dev lo
+      when: ansible_lo.ipv4_secondaries is undefined
+
+    - name: Configure mpls forwarding
+      ansible.posix.sysctl:
+        name: "net.mpls.conf.{{ item }}.input"
+        value: 1
+        state: present
+        sysctl_set: true
+        reload: true
+      loop: "{{ ansible_interfaces }}"
+      notify: Restart frrouting
+
+    - name: Configure mpls label stack
+      ansible.posix.sysctl:
+        name: net.mpls.platform_labels
+        value: 100000
+        state: present
+        sysctl_set: true
+        reload: true
+
+    - name: Configure and start OSPF with Segment Routing
+      block:
+        - name: Add OSPF configuration for loopback
+          ansible.builtin.blockinfile:
+            path: /etc/frr/frr.conf
+            block: |
+              router ospf
+               ospf router-id {{ loopback_ipv4_address }}
+               capability opaque
+               segment-routing on
+               segment-routing global-block 16000 23999
+               segment-routing local-block 5000 5999
+               segment-routing node-msd 8
+               segment-routing prefix {{loopback_ipv4_address }}/32 index 1100
+               router-info area
+              !
+              interface lo
+               ip address {{ loopback_ipv4_address }}
+               ip ospf area 0
+              !
+
+        - name: Add OSPF configuration for all other interfaces
+          ansible.builtin.blockinfile:
+            path: /etc/frr/frr.conf
+            block: |
+              interface {{ item }}
+               ip address {{ hostvars[inventory_hostname]['ansible_' + item]['ipv4']['address'] }}
+               ip ospf area 0
+               ip ospf network point-to-point
+              !
+            marker: "# {mark} ANSIBLE MANAGED BLOCK OSPF {{ item }}"
+          when: item != "lo"
+          loop: "{{ ansible_interfaces }}"
+      when: enable_ospf | bool
+
+    - name: Configure and start IS-IS with Segment Routing
+      block:
+        - name: Add IS-IS configuration for loopback
+          ansible.builtin.blockinfile:
+            path: /etc/frr/frr.conf
+            block: |
+              router isis 1
+               net 49.{{ loopback_ipv4_address }}.00
+               mpls-te on
+               mpls-te router-address {{ loopback_ipv4_address }}
+               is-type level-1
+               segment-routing on
+               segment-routing global-block 16000 23999
+               segment-routing node-msd 8
+               segment-routing prefix {{loopback_ipv4_address }}/32 index 1021
+               router-info area
+              !
+              interface lo
+               ip router isis 1
+              !
+
+        - name: Add IS-IS configuration for all other interfaces
+          ansible.builtin.blockinfile:
+            path: /etc/frr/frr.conf
+            block: |
+              interface {{ item }}
+               ip router isis 1
+               isis network point-to-point
+              !
+            marker: "# {mark} ANSIBLE MANAGED BLOCK IS-IS {{ item }}"
+          when: item != "lo"
+          loop: "{{ ansible_interfaces }}"
+      when: enable_isis | bool
+
+    - name: Enable FRRouting Daemons
+      ansible.builtin.copy:
+        dest: /etc/frr/daemons
+        backup: true
+        content: |
+          # default to using syslog. /etc/rsyslog.d/45-frr.conf places the log in
+          # /var/log/frr/frr.log
+          log syslog informational
+          # Note:
+          # FRR's configuration shell, vtysh, dynamically edits the live, in-memory
+          # configuration while FRR is running. When instructed, vtysh will persist the
+          # live configuration to this file, overwriting its contents. If you want to
+          # avoid this, you can edit this file manually before starting FRR, or instruct
+          # vtysh to write configuration to a different file.
+
+          bgpd=no
+          ospfd={{ enable_ospf | bool | ternary('yes', 'no') }}
+          ospf6d=no
+          ripd=no
+          ripngd=no
+          isisd={{ enable_isis | bool | ternary('yes', 'no') }}
+          pimd=no
+          ldpd=no
+          nhrpd=no
+          eigrpd=no
+          babeld=no
+          sharpd=no
+          pbrd=no
+          bfdd=no
+          fabricd=no
+          vrrpd=no
+          pathd=no
+
+          vtysh_enable=yes
+          zebra_options="  -A 127.0.0.1 -s 90000000"
+          bgpd_options="   -A 127.0.0.1"
+          ospfd_options="  -A 127.0.0.1"
+          ospf6d_options=" -A ::1"
+          ripd_options="   -A 127.0.0.1"
+          ripngd_options=" -A ::1"
+          isisd_options="  -A 127.0.0.1"
+          pimd_options="   -A 127.0.0.1"
+          ldpd_options="   -A 127.0.0.1"
+          nhrpd_options="  -A 127.0.0.1"
+          eigrpd_options=" -A 127.0.0.1"
+          babeld_options=" -A 127.0.0.1"
+          sharpd_options=" -A 127.0.0.1"
+          pbrd_options="   -A 127.0.0.1"
+          staticd_options="-A 127.0.0.1"
+          bfdd_options="   -A 127.0.0.1"
+          fabricd_options="-A 127.0.0.1"
+          vrrpd_options="  -A 127.0.0.1"
+          pathd_options="  -A 127.0.0.1"
+
+          frr_profile="traditional"
+      notify: Restart frrouting
+
+  handlers:
+    - name: Restart frrouting
+      ansible.builtin.service:
+        name: frr
+        state: restarted

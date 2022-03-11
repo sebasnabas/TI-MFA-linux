@@ -1,0 +1,97 @@
+Vagrant.configure("2") do |config|
+  # ssh configuration
+  config.ssh.username = "vagrant"
+
+  config.ssh.keep_alive = true
+
+  # config.vm.box = "debian/bullseye64"
+  config.vm.box = "debian_frr_linux_5.16"
+  config.vm.provider "virtualbox" do |virtualbox|
+    virtualbox.memory = "512"
+    virtualbox.cpus = "1"
+  end
+
+  config.vm.provision "shell", inline: "apt-get install --yes python3-apt"
+  config.vm.synced_folder "../../src", "/home/vagrant/ti-mfa-src"
+
+  # Network topology
+  # see https://www.univie.ac.at/ct/stefan/gi18.pdf figure 1
+  #
+  #                                   Router 1
+  #                                 10.200.200.1
+  #                                   +-------+
+  #                            [eth1] |       | [eth2]
+  #      +----------------------------|   A   |----------------------------+
+  #  e_l |              192.168.12.11 |       | 192.168.14.11              |
+  #      |                            +-------+                        e_r |
+  #      |                                                                 |
+  #      |                                                                 |
+  #      | [eth1]                                                   [eth2] |
+  #      | 192.168.12.12                                     192.168.14.14 |
+  #  +-------+                                                         +-------+
+  #  |       | [eth2]                                           [eth1] |       |
+  #  |   D   |---------------------------------------------------------|   B   |
+  #  |       | 192.168.23.12                             192.168.34.14 |       |
+  #  +-------+                                                         +-------+
+  #      |                                                                 |
+  #      |                                                                 |
+  #      |                                                                 |
+  #      | [eth1]                                                   [eth2] |
+  #      | 192.168.12.12                                     192.168.14.14 |
+  #  +-------+                                                         +-------+
+  #  |       | [eth2]                                           [eth1] |       |
+  #  |   E   |---------------------------------------------------------|   C   |
+  #  |       | 192.168.23.12                             192.168.34.14 |       |
+  #  +-------+                                                         +-------+
+  #      |                                                                 |
+  #      |                                                                 |
+  #      |                            +-------+                            |
+  #      |                     [eth1] |       | [eth2]                     |
+  #      +----------------------------|   Z   |----------------------------+
+  #                     192.168.12.11 |       | 192.168.14.11
+  #                                   +-------+
+  # @TODO
+
+  PRIVATE_NETWORK_PREFIX = "192.168"
+  VM_NETWORK_CONFIG = {
+    "A": {
+      "e_l": "12.11",
+    },
+    "B": {
+    },
+    "C": {
+    },
+    "D": {
+    },
+    "E": {
+    },
+    "Z": {
+    }
+  }
+
+  enabled_igp = ENV['ENABLED_IGP']
+
+  enabled_igp = "ospf" if enabled_igp == nil
+
+  VM_NETWORK_CONFIG.each_with_index do |(machine_id, network_config), index|
+    config.vm.define "timfa-test-machine-#{machine_id}" do |machine|
+      machine.vm.hostname = "timfa-test-machine-#{machine_id}"
+
+      network_config.each do |network_name, ip_address_suffix|
+        machine.vm.network "private_network",
+          ip: "#{PRIVATE_NETWORK_PREFIX}.#{ip_address_suffix}",
+          virtualbox__intnet: "#{network_name}"
+      end
+
+      machine.vm.provision :ansible do |ansible|
+        ansible.extra_vars = {
+          loopback_ipv4_address: "10.200.200.#{index + 1}",
+          enable_isis: enabled_igp.downcase == "isis",
+          enable_ospf: enabled_igp.downcase == "ospf"
+        }
+        ansible.verbose = "v"
+        ansible.playbook = "common.yml"
+      end
+    end
+  end
+end

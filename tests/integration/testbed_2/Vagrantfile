@@ -12,6 +12,8 @@ Vagrant.configure("2") do |config|
 
   config.vm.provision "shell", inline: "apt-get install --yes python3-apt"
 
+  config.vm.synced_folder "../../src/", "/opt/timfa"
+
   config.vm.define "timfa-test-machine-frr" do |machine|
     machine.vm.hostname = "timfa-test-machine-frr"
 
