@@ -129,13 +129,19 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
         goto accept;
     }
 
-    if (run_timfa(skb) != 0)
+    switch(run_ti_mfa(skb))
     {
-        pr_debug("ti-mfa failed on [%s]. Dropping...\n", skb->dev->name);
-        return NF_DROP;
-    }
+        case TI_MFA_SUCCESS:
+            return NF_STOLEN;
 
-    return NF_STOLEN;
+        case TI_MFA_ERROR:
+            pr_debug("ti-mfa failed on [%s]. Dropping...\n", skb->dev->name);
+            return NF_DROP;
+
+        /* Handling TI_MFA_PASS */
+        default:
+            goto accept;
+    }
 
 accept:
     return NF_ACCEPT;

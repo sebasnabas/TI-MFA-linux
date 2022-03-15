@@ -68,9 +68,7 @@ static uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_hdr link
     return count;
 }
 
-/* Step 2):
-*    Determine shortest path P to t based on all link failures
-*    in the remaining network G'
+/* Step 2): Determine shortest path P to t based on all link failures in the remaining network G'
 */
 static struct mpls_route * get_shortest_path(struct mpls_entry_decoded destination, struct ti_mfa_hdr link_failures[], uint link_failure_count)
 {
@@ -115,6 +113,24 @@ void set_new_label_stack(struct sk_buff *skb, struct mpls_entry_decoded label_st
 
 }
 
+static struct sk_buff *create_new_skb(struct sk_buff *skb)
+{
+    struct sk_buff *new_skb = skb_copy_expand(skb, sizeof(struct ti_mfa_hdr) + skb_headroom(skb), 0, GFP_ATOMIC);
+
+    if (new_skb == NULL)
+    {
+        return new_skb;
+    }
+
+    // Sending packet to detect link failure doesn't work, because routing was already done
+    // Avoid recursion (?)
+    #ifdef CONFIG_NETFILTER_EGRESS
+    nf_skip_egress(new_skb, true);
+    #endif
+
+    return new_skb;
+}
+
 /* TI-MFA algorithm:
 *    1) Flush label stack except for destination t
 *    2) Determine shortest path P to t based on all link failures
@@ -128,67 +144,79 @@ void set_new_label_stack(struct sk_buff *skb, struct mpls_entry_decoded label_st
 *         For the second item on the label stack, start over with
 *         v_i as starting node until v_i=t
 */
-int run_timfa(struct sk_buff *skb)
+static int __run_ti_mfa(struct sk_buff *skb)
 {
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_hdr link_failures[MAX_NEW_LABELS];
     struct ethhdr *ethh;
     struct ti_mfa_hdr *ti_mfa_h;
-    int err = 0;
     uint mpls_label_count = 0;
     uint link_failure_count = 0;
     struct mpls_route *shortest_path;
-    /* Create new skbuff, because sending original skb
-    * via dev_queue_xmit() causes system crash
-    */
-    struct sk_buff *new_skb;
     struct ethhdr *new_eth_hdr;
 
-    if (is_not_mpls(skb))
-    {
-        return 0;
-    }
+    ethh = eth_hdr(skb);
 
-    new_skb = skb_copy_expand(skb, sizeof(*ti_mfa_h) + skb_headroom(skb), 0, GFP_ATOMIC);
+    goto out_success;
 
-    if (new_skb == NULL)
-    {
-        pr_debug("Copying skb failed on [%s]\n", skb->dev->name);
-        return -1;
-    }
-
-    ethh = eth_hdr(new_skb);
-    skb_pull(new_skb, sizeof(*ethh));
+    skb_pull(skb, sizeof(*ethh));
     pr_debug("eth header pulled");
 
-    mpls_label_count = flush_mpls_label_stack(new_skb, label_stack, MAX_NEW_LABELS);
-    link_failure_count = flush_link_failure_stack(new_skb, link_failures, MAX_NEW_LABELS);
+    mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
+    link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     shortest_path = get_shortest_path(label_stack[mpls_label_count - 1], link_failures, link_failure_count);
-    set_new_label_stack(new_skb, label_stack, shortest_path);
+    set_new_label_stack(skb, label_stack, shortest_path);
 
-    new_eth_hdr = skb_push(new_skb, sizeof(*ethh));
+    new_eth_hdr = skb_push(skb, sizeof(*ethh));
     memcpy(new_eth_hdr, ethh, sizeof(*ethh));
     pr_debug("Set eth header\n");
 
-    // Sending packet to detect link failure doesn't work, because routing was already done
-    // Avoid recursion (?)
-    #ifdef CONFIG_NETFILTER_EGRESS
-    nf_skip_egress(new_skb, true);
-    #endif
+    pr_debug("Sending on [%s]...", skb->dev->name);
 
-    pr_debug("Sending on [%s]...", new_skb->dev->name);
-
-    if (dev_queue_xmit(new_skb) != NET_XMIT_SUCCESS)
+    if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
     {
-        // @TODO add ti-mfa here
-        pr_debug("Sending failed on [%s]", new_skb->dev->name);
-        err = -1;
-        goto out_free;
+        goto out_retry;
     }
 
-    return err;
+    goto out_success;
 
-out_free:
-    kfree_skb(new_skb);
-    return err;
+out_success:
+    return TI_MFA_SUCCESS;
+
+out_error:
+    /* kfree(skb); */
+    return TI_MFA_ERROR;
+
+out_retry:
+    /* @TODO: add new link failure to header */
+    return TI_MFA_RETRY;
+}
+
+int run_ti_mfa(struct sk_buff *skb)
+{
+    int return_code = TI_MFA_SUCCESS;
+    struct sk_buff *new_skb = NULL;
+
+    if (is_not_mpls(skb))
+    {
+        return TI_MFA_PASS;
+    }
+
+    /* Create new skbuff, because sending original skb
+    * via dev_queue_xmit() causes system crash
+    */
+    new_skb = create_new_skb(skb);
+    if (new_skb == NULL)
+    {
+        pr_debug("Copying skb failed on [%s]\n", skb->dev->name);
+        return TI_MFA_ERROR;
+    }
+
+    pr_debug("Running ti-mfa algo\n");
+    do
+    {
+       return_code = __run_ti_mfa(new_skb);
+    } while (return_code == TI_MFA_RETRY);
+
+    return return_code;
 }
