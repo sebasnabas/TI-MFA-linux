@@ -3,6 +3,7 @@
 
 #include <net/mpls.h>
 #include <linux/mpls.h>
+#include <linux/rtnetlink.h>
 
 #define MPLS_LABEL(x)   (x & MPLS_LS_LABEL_MASK) >> MPLS_LS_LABEL_SHIFT;
 #define MPLS_TC(x)      (x & MPLS_LS_TTL_MASK) >> MPLS_LS_TTL_SHIFT;
@@ -129,6 +130,11 @@ static inline struct mpls_entry_decoded mpls_entry_decode(struct mpls_shim_hdr *
 	return result;
 }
 
+static inline struct mpls_dev *mpls_dev_get(const struct net_device *dev)
+{
+	return rcu_dereference_rtnl(dev->mpls_ptr);
+}
+
 static inline int parse_encap_mpls_labels(struct mpls_shim_hdr *hdr, u32 labels[], int len)
 {
     u8 label_count = len / 4;
@@ -140,6 +146,30 @@ static inline int parse_encap_mpls_labels(struct mpls_shim_hdr *hdr, u32 labels[
     }
 
     return 0;
+}
+
+/* Copied from /net/mpls/af_mpls.c */
+static inline u8 *__mpls_nh_via(struct mpls_route *rt, struct mpls_nh *nh)
+{
+	return (u8 *)nh + rt->rt_via_offset;
+}
+
+static inline const u8 *mpls_nh_via(const struct mpls_route *rt,
+			     const struct mpls_nh *nh)
+{
+	return __mpls_nh_via((struct mpls_route *)rt, (struct mpls_nh *)nh);
+}
+
+static inline struct mpls_route *mpls_route_input_rcu(struct net *net, unsigned index)
+{
+	struct mpls_route *rt = NULL;
+
+	if (index < net->mpls.platform_labels) {
+		struct mpls_route __rcu **platform_label =
+			rcu_dereference(net->mpls.platform_label);
+		rt = rcu_dereference(platform_label[index]);
+	}
+	return rt;
 }
 
 #endif /* TI_MFA_MPLS_H */
