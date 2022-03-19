@@ -11,6 +11,8 @@
 #include <linux/netfilter_netdev.h>
 #endif
 
+#include <net/arp.h>
+#include <net/neighbour.h>
 #include <net/protocol.h>
 #include <net/mpls.h>
 
@@ -63,13 +65,32 @@ static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_hdr link_f
     return count;
 }
 
+static const char neigh_tables[4][4] = { "ARP", "IP6", "DEC", "NRT"};
+
 /* Step 2): Determine shortest path P to t based on all link failures in the remaining network G'
 */
-static struct mpls_route * get_shortest_path(struct mpls_entry_decoded destination, struct ti_mfa_hdr link_failures[], uint link_failure_count)
+static struct mpls_route * get_shortest_path(u32 destination, struct ti_mfa_shim_hdr link_failures[], uint link_failure_count)
 {
-    struct mpls_route *shortest_path = NULL;
-    // @TODO
-    return shortest_path;
+    struct mpls_route *rt = init_net.mpls.platform_label[destination];
+    for_nexthops(rt) {
+        int i = 0;
+        // @TODO: Filter by link failures
+        // @TODO: Support for IPv6
+        u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
+        struct neighbour *neigh = __ipv4_neigh_lookup_noref(nh->nh_dev, neigh_index);
+
+        pr_debug("NH: dev: %s, table: %s, mac: %pM\n",
+                 nh->nh_dev->name, neigh_tables[nh->nh_via_table], neigh->ha
+        );
+        pr_debug("labels:\n");
+        for (i = 0; i < nh->nh_labels; i++)
+        {
+            pr_debug("%u", *(nh->nh_label));
+
+        }
+        pr_debug("\n");
+    } endfor_nexthops(rt);
+    return rt;
 }
 
 /* Step 3):
