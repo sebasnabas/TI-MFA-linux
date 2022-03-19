@@ -22,12 +22,11 @@ struct ti_mfa_nh **deleted_nhs;
 
 /* Step 1): Decode mpls labels, remove them from header and save them
 */
-static uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels)
+static uint get_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels)
 {
-    struct mpls_shim_hdr *mpls_hdr_entry;
     uint label_count = 0;
     do {
-        mpls_hdr_entry = mpls_hdr(skb);
+        struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
         mpls_entries[label_count] = mpls_entry_decode(mpls_hdr_entry);
         skb_pull(skb, sizeof(*mpls_hdr_entry));
         label_count++;
@@ -38,12 +37,10 @@ static uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decode
         }
     } while (!mpls_entries[label_count - 1].bos);
 
-    pr_debug("Flushed label stack");
-
     return label_count;
 }
 
-static uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_hdr link_failures[], int max)
+static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_hdr link_failures[], int max)
 {
     struct ti_mfa_hdr *link_failure_entry;
     uint count = 0;
@@ -54,7 +51,7 @@ static uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_hdr link
         }
 
         link_failure_entry = skb_pull(skb, sizeof(*link_failure_entry));
-        memcpy(&link_failures[count], link_failure_entry, sizeof(*link_failure_entry));
+        memmove(&link_failures[count], link_failure_entry, sizeof(*link_failure_entry));
         count++;
 
         if (count > max)
@@ -62,8 +59,6 @@ static uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_hdr link
             break;
         }
     } while (!link_failures[count - 1].bos);
-
-    pr_debug("Flushed ti-mfa stack");
 
     return count;
 }
@@ -162,9 +157,9 @@ static int __run_ti_mfa(struct sk_buff *skb)
     skb_pull(skb, sizeof(*ethh));
     pr_debug("eth header pulled");
 
-    mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
-    link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
-    shortest_path = get_shortest_path(label_stack[mpls_label_count - 1], link_failures, link_failure_count);
+    mpls_label_count = get_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
+    link_failure_count = get_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
+    shortest_path = get_shortest_path(label_stack[mpls_label_count - 1].label, link_failures, link_failure_count);
     set_new_label_stack(skb, label_stack, shortest_path);
 
     new_eth_hdr = skb_push(skb, sizeof(*ethh));
