@@ -38,8 +38,11 @@ static u32 number_of_timfa_hooks;
 static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
                                        const struct nf_hook_state * state)
 {
+    struct ethhdr *ethh;
+    struct ethhdr *new_ethh;
     struct mpls_shim_hdr *hdr;
     struct mpls_entry_decoded mpls_entry;
+    struct ti_mfa_shim_hdr *ti_mfa_h;
 
     if (!eth_p_mpls(skb->protocol))
     {
@@ -60,47 +63,44 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
     }
 
     mpls_entry = mpls_entry_decode(hdr);
-
     pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
 
-    // @TODO: remove ti-mfa header if last mpls label -> pen-ultimate hop popping
-    if (mpls_entry.bos)
+    if (!mpls_entry.bos)
     {
-        int err = 0;
-        struct ethhdr *ethh = eth_hdr(skb);
-        struct ti_mfa_hdr *ti_mfa_h;
-        struct ethhdr *new_ethhdr;
-        struct mpls_shim_hdr *new_mpls_hdr;
-
-        int mac_len = skb->mac_len;
-
-        err = skb_ensure_writable(skb, ETH_HLEN);
-        if (unlikely(err))
-            return err;
-        // skb_pull(skb, sizeof(*ethh));
-        // pr_debug("eth header pulled\n");
-
-        // skb_pull(skb, sizeof(*hdr));
-        // pr_debug("mpls header pulled\n");
-
-        if (!pskb_may_pull(skb, sizeof(*ti_mfa_h)))
+        struct mpls_entry_decoded second_mpls_entry = mpls_entry_decode(&hdr[1]);
+        if (second_mpls_entry.label != MPLS_LABEL_EXTENSION && !second_mpls_entry.bos)
         {
-            pr_err("No timfa header. Dropping\n");
-            return NF_DROP;
+            goto accept;
         }
+    }
 
-        ti_mfa_h = skb_pull(skb, sizeof(*ti_mfa_h));
+    // @TODO: remove ti-mfa header if last mpls (not extension) label -> Penultimate hop popping
+
+    ethh = eth_hdr(skb);
+
+    /* Pop regular & extension mpls label */
+    skb_pull(skb, sizeof(*hdr));
+    skb_pull(skb, sizeof(*hdr));
+    skb_reset_network_header(skb);
+
+    /* Pop ti-mfa shim headers */
+    do {
+        ti_mfa_h = ti_mfa_hdr(skb);
+        skb_pull(skb, sizeof(*ti_mfa_h));
         pr_debug("ti-mfa header pulled\n");
         pr_debug("Src: %pM; Dst: %pM", ti_mfa_h->link_source, ti_mfa_h->link_dest);
+    } while (!ti_mfa_h->bos);
 
-        new_ethhdr = skb_push(skb, sizeof(*ethh));
-        memcpy(new_ethhdr, ethh, sizeof(*ethh));
+    skb_reset_network_header(skb);
 
-        new_mpls_hdr = skb_push(skb, sizeof(*hdr));
-        memcpy(new_mpls_hdr, hdr, sizeof(*hdr));
+    /* Set regular mpls header and eth header again */
+    skb_push(skb, sizeof(*hdr));
+    skb_reset_network_header(skb);
+    hdr = mpls_hdr(skb);
+    hdr[0] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, mpls_entry.bos);
 
-        pr_debug("New mpls and ethernet header set");
-    }
+    new_ethh = skb_push(skb, sizeof(*ethh));
+    memmove(new_ethh, ethh, sizeof(*ethh));
 
 accept:
     return NF_ACCEPT;
