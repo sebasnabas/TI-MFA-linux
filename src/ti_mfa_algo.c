@@ -218,5 +218,10 @@ int run_ti_mfa(struct sk_buff *skb)
        return_code = __run_ti_mfa(new_skb);
     } while (return_code == TI_MFA_RETRY);
 
+    if (return_code == TI_MFA_ERROR)
+    {
+        kfree_skb(new_skb);
+    }
+
     return return_code;
 }
