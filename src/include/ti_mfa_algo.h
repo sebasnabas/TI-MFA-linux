@@ -11,7 +11,8 @@
 #define TI_MFA_ERROR    0x02
 #define TI_MFA_RETRY    0x03
 
-#define TI_MFA_MPLS_EXTENSION_HDR   mpls_entry_encode(MPLS_LABEL_EXTENSION, 255, 0, true);
+#define TI_MFA_MPLS_EXTENSION_LABEL     MPLS_LABEL_EXTENSION    /* Indicate that a ti-mfa header follows the mpls header */
+#define TI_MFA_MPLS_EXTENSION_HDR       mpls_entry_encode(TI_MFA_MPLS_EXTENSION_LABEL, 255, 0, true);
 
 // save deleted next_hops
 extern struct ti_mfa_neigh **deleted_nhs;
