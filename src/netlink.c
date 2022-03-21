@@ -68,7 +68,7 @@ static void parse_nl_msg(struct nlmsghdr *nlh, int received_bytes)
 
     if (rta_table[NHA_GATEWAY] && rta_table[NHA_ENCAP] && rta_getattr_u16(rta_table[NHA_ENCAP_TYPE]) == LWTUNNEL_ENCAP_MPLS)
     {
-        struct ti_mfa_nh *deleted_nh = kmalloc(sizeof(struct ti_mfa_nh), GFP_KERNEL);
+        struct ti_mfa_neigh *deleted_nh = kmalloc(sizeof(struct ti_mfa_neigh), GFP_KERNEL);
         u8 nh_mac[ETH_ALEN];
         u32 label = parse_encap_mpls(rta_table[NHA_ENCAP]);
 
