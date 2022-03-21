@@ -20,11 +20,13 @@ extern struct ti_mfa_neigh **deleted_nhs;
 struct ti_mfa_neigh {
     struct net_device  *nh_dev;
     u8 mac_address[ETH_ALEN];
+    bool bos;
 };
 
 struct ti_mfa_shim_hdr {
     unsigned char link_source[ETH_ALEN];
     unsigned char link_dest[ETH_ALEN];
+    unsigned char node_source[ETH_ALEN];
     u8 bos;
 } __attribute__((packed));
 
@@ -33,7 +35,7 @@ void ti_mfa_ifdown(struct net_device *dev);
 
 static inline struct ti_mfa_shim_hdr *ti_mfa_hdr(const struct sk_buff *skb)
 {
-	return (struct ti_mfa_shim_hdr *)skb_network_header(skb);
+    return (struct ti_mfa_shim_hdr *)skb_network_header(skb);
 }
 
 #endif // TI_MFA_ALGO_H

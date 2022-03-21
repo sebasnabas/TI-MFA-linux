@@ -172,8 +172,10 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         skb_push(skb, ti_mfa_hdr_size);
         skb_reset_network_header(skb);
         ti_mfa_h = ti_mfa_hdr(skb);
-        for (i = label_count + link_failure_count; i > label_count; i--) {
-            ti_mfa_h[label_count + i] = link_failures[i];
+        for (i = link_failure_count - 1; i >= 0; i--) {
+            struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i];
+            ti_mfa_h[i] = ti_mfa_entry;
+            pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM\n", i, ti_mfa_entry.node_source, ti_mfa_entry.link_source, ti_mfa_entry.link_dest);
         }
     }
 
@@ -185,7 +187,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     if (link_failure_count > 0)
     {
-        mpls_h[label_count] = TI_MFA_MPLS_EXTENSION_HDR;
+        mpls_h[label_count-1] = TI_MFA_MPLS_EXTENSION_HDR;
         label_count--;
         bos = false;
     } else {

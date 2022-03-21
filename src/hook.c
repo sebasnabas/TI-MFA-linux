@@ -37,8 +37,8 @@ static u32 number_of_timfa_hooks;
 static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
                                        const struct nf_hook_state * state)
 {
+    struct ethhdr eth;
     struct ethhdr *ethh;
-    struct ethhdr *new_ethh;
     struct mpls_shim_hdr *hdr;
     struct mpls_entry_decoded mpls_entry;
     struct ti_mfa_shim_hdr *ti_mfa_h;
@@ -71,11 +71,13 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
         {
             goto accept;
         }
+    } else {
+        pr_debug("Got mpls packet without ti-mfa header\n");
+        goto accept;
     }
 
-    // @TODO: remove ti-mfa header if last mpls (not extension) label -> Penultimate hop popping
-
     ethh = eth_hdr(skb);
+    eth = *ethh;
 
     /* Pop regular & extension mpls label */
     skb_pull(skb, sizeof(*hdr));
@@ -86,8 +88,11 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
     do {
         ti_mfa_h = ti_mfa_hdr(skb);
         skb_pull(skb, sizeof(*ti_mfa_h));
-        pr_debug("ti-mfa header pulled\n");
-        pr_debug("Src: %pM; Dst: %pM", ti_mfa_h->link_source, ti_mfa_h->link_dest);
+        pr_debug("TI-MFA header pulled:\n");
+        pr_debug("node: %pM, Src: %pM; Dst: %pM %s\n",
+                ti_mfa_h->node_source, ti_mfa_h->link_source, ti_mfa_h->link_dest,
+                ti_mfa_h->bos ? "[S]" : ""
+        );
     } while (!ti_mfa_h->bos);
 
     skb_reset_network_header(skb);
@@ -96,10 +101,13 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
     skb_push(skb, sizeof(*hdr));
     skb_reset_network_header(skb);
     hdr = mpls_hdr(skb);
-    hdr[0] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, mpls_entry.bos);
+    *hdr = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, mpls_entry.bos);
 
-    new_ethh = skb_push(skb, sizeof(*ethh));
-    memmove(new_ethh, ethh, sizeof(*ethh));
+    skb_push(skb, sizeof(*ethh));
+    skb_reset_mac_header(skb);
+
+    ethh = eth_hdr(skb);
+    *ethh = eth;
 
 accept:
     return NF_ACCEPT;
