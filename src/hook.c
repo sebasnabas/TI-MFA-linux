@@ -217,7 +217,6 @@ static int initialize_hooks(void)
         // END Ingress
 
         // START Egress
-        #ifdef CONFIG_NETFILTER_EGRESS
         timfa_hooks[i].hook = timfa_egress_hook;
         timfa_hooks[i].hooknum = NF_NETDEV_EGRESS;
         timfa_hooks[i].pf = NFPROTO_NETDEV;
@@ -234,7 +233,6 @@ static int initialize_hooks(void)
 
         pr_debug("TI-MFA egress hook successfully registered on device: %s!\n", dev->name);
         i++;
-        #endif
         // END Egress
 
 next_device:

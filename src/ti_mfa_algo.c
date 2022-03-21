@@ -6,10 +6,7 @@
 #include <linux/netdevice.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
-
-#ifdef CONFIG_NETFILTER_EGRESS
 #include <linux/netfilter_netdev.h>
-#endif
 
 #include <net/arp.h>
 #include <net/neighbour.h>
@@ -201,12 +198,6 @@ static struct sk_buff *create_new_skb(struct sk_buff *skb)
         return new_skb;
     }
 
-    // Sending packet to detect link failure doesn't work, because routing was already done
-    // Avoid recursion (?)
-    #ifdef CONFIG_NETFILTER_EGRESS
-    nf_skip_egress(new_skb, true);
-    #endif
-
     return new_skb;
 }
 
@@ -290,9 +281,9 @@ int run_ti_mfa(struct sk_buff *skb)
         return TI_MFA_ERROR;
     }
 
-#ifdef CONFIG_NETFILTER_EGRESS
+    // Sending packet to detect link failure doesn't work, because routing was already done
+    // Avoid recursion (?)
     nf_skip_egress(new_skb, true);
-#endif
 
     do
     {
