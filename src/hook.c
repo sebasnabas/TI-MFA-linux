@@ -257,14 +257,6 @@ static void unregister_hooks(void)
     }
 }
 
-static void release_socket(void)
-{
-    if (nl_sk)
-    {
-        sock_release(nl_sk);
-    }
-}
-
 static int __init timfa_init(void)
 {
     int err;
