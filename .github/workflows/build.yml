@@ -20,5 +20,5 @@ jobs:
             ${{ runner.os }}-vagrant-
 
       - name: Build vagrant box
-        if: steps.vagrant-base-box-hit.outputs.cache-hit != 'true'
+        if: steps.vagrant-base-box-cache.outputs.cache-hit != 'true'
         run: infrastructure/build.sh
