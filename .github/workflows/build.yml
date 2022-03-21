@@ -15,7 +15,7 @@ jobs:
         id: vagrant-base-box-cache
         with:
           path: ~/.vagrant.d/boxes
-          key: ${{ runner.os }}-vagrant-${{ hashFiles('infrastructure/Vagrantfile') }}
+          key: ${{ runner.os }}-vagrant-${{ hashFiles('infrastructure/Vagrantfile') }}-${{ hashFiles('infrastructure/build.yml') }}
           restore-keys: |
             ${{ runner.os }}-vagrant-
 
