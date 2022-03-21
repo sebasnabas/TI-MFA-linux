@@ -13,7 +13,6 @@
 #include <net/sock.h>
 
 #include "include/mpls.h"
-#include "include/netlink.h"
 #include "include/ti_mfa_algo.h"
 #include "include/utils.h"
 
@@ -269,34 +268,11 @@ static void release_socket(void)
 static int __init timfa_init(void)
 {
     int err;
-    struct sockaddr_nl addr;
     int labels_total = init_net.mpls.platform_labels;
 
     deleted_nhs = kmalloc_array(labels_total, sizeof(struct ti_mfa_nh *), GFP_KERNEL);
 
     pr_info("TI-MFA started\n");
-
-    err = sock_create_kern(&init_net, AF_NETLINK, SOCK_RAW, NETLINK_ROUTE, &nl_sk);
-    if (err)
-    {
-        pr_crit("Error creating netlink socket");
-        goto out;
-    }
-
-    addr.nl_family = AF_NETLINK;
-    addr.nl_pid    = 0;
-
-    err = kernel_bind(nl_sk, (struct sockaddr *) &addr, sizeof(addr));
-    if (err)
-    {
-        pr_crit("Error binding netlink socket");
-        goto out_release;
-    }
-
-    nl_sk->sk->sk_data_ready = rcv_netlink_msg;
-    nl_sk->sk->sk_allocation = GFP_KERNEL;
-
-    pr_debug("Created netlink socket");
 
     err = initialize_hooks();
     if (err)
@@ -307,7 +283,6 @@ out:
 
 out_release:
     kfree(deleted_nhs);
-    release_socket();
     goto out;
 
 out_unregister:
@@ -324,9 +299,6 @@ static void __exit timfa_exit(void)
     unregister_hooks();
 
     kfree(timfa_hooks);
-
-    release_socket();
-    pr_debug("Released netlink socket");
 
     pr_info("TI-MFA shut down\n");
 }
