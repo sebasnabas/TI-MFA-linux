@@ -81,6 +81,7 @@
           - cmake
           - gcc
           - gpg
+          - iproute2
           - tcpdump
 
     - name: Add frrouting repo key

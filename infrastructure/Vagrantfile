@@ -2,6 +2,8 @@ Vagrant.configure("2") do |config|
   config.ssh.username = "vagrant"
   config.ssh.keep_alive = true
 
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
   config.vm.box = "debian/testing64"
   config.vm.provider "virtualbox" do |virtualbox|
     virtualbox.memory = "512"
