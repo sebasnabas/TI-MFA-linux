@@ -112,6 +112,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     struct net_device *out_dev = nh->nh_dev;
     struct ti_mfa_shim_hdr *ti_mfa_h;
     struct mpls_shim_hdr *mpls_h;
+    bool bos = false;
 
     // @TODO: Validate the node computing
     for (i = 0; i < orig_label_count; i++) {
@@ -135,7 +136,17 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     ti_mfa_hdr_size =  link_failure_count * sizeof(struct ti_mfa_shim_hdr);
     new_header_size = mpls_hdr_size + ti_mfa_hdr_size;
 
+    pr_debug("Calculated header size with label count: %u and link failure count %u\n", label_count, link_failure_count);
+
+
     /* Copied from /net/mpls/af_mpls.c { */
+    skb_orphan(skb);
+
+    if (skb_warn_if_lro(skb))
+        goto out_free;
+
+    skb_forward_csum(skb);
+
     mtu = out_dev->mtu;
     /* Ensure there is enough space for the headers in the skb */
     if (!((skb->len <= mtu) || (skb_is_gso(skb) && skb_gso_validate_network_len(skb, mtu)))) {
@@ -157,6 +168,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     if (link_failure_count > 0)
     {
         /* Set new ti-mfa header */
+        pr_debug("Setting new ti-mfa header\n");
         skb_push(skb, ti_mfa_hdr_size);
         skb_reset_network_header(skb);
         ti_mfa_h = ti_mfa_hdr(skb);
@@ -166,6 +178,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     }
 
     /* Set new mpls header */
+    pr_debug("Setting new mpls header\n");
     skb_push(skb, mpls_hdr_size);
     skb_reset_network_header(skb);
     mpls_h = mpls_hdr(skb);
@@ -174,10 +187,15 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     {
         mpls_h[label_count] = TI_MFA_MPLS_EXTENSION_HDR;
         label_count--;
+        bos = false;
+    } else {
+        bos = true;
     }
-    for (i = label_count; i >= 0; i--) {
+    for (i = label_count - 1; i >= 0; i--) {
         struct mpls_entry_decoded mpls_entry = new_label_stack[i];
-        mpls_h[i] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, false);
+        mpls_h[i] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, bos);
+
+        bos = false;
     }
 
     pr_debug("Label count: %u\n", label_count);
@@ -187,18 +205,6 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 out_free:
     kfree(new_label_stack);
     return error;
-}
-
-static struct sk_buff *create_new_skb(struct sk_buff *skb)
-{
-    struct sk_buff *new_skb = skb_copy_expand(skb, sizeof(struct ti_mfa_shim_hdr) + skb_headroom(skb), 0, GFP_ATOMIC);
-
-    if (new_skb == NULL)
-    {
-        return new_skb;
-    }
-
-    return new_skb;
 }
 
 /* TI-MFA algorithm:
@@ -218,6 +224,7 @@ static int __run_ti_mfa(struct sk_buff *skb)
 {
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
+    struct mpls_entry_decoded destination;
     struct ethhdr *ethh;
     uint mpls_label_count = 0;
     uint link_failure_count = 0;
@@ -229,8 +236,19 @@ static int __run_ti_mfa(struct sk_buff *skb)
     skb_pull(skb, sizeof(*ethh));
 
     mpls_label_count = get_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
-    link_failure_count = get_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
-    shortest_path = get_shortest_path(dev_net(skb->dev), label_stack[mpls_label_count - 1].label, link_failures, link_failure_count);
+
+    destination = label_stack[mpls_label_count - 1];
+    if (destination.label == TI_MFA_MPLS_EXTENSION_LABEL) {
+        pr_debug("Got ti-mfa extension label\n");
+        mpls_label_count--;
+        destination = label_stack[mpls_label_count - 1];
+        link_failure_count = get_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
+    }
+    else {
+        pr_debug("Got no ti-mfa extension label\n");
+    }
+
+    shortest_path = get_shortest_path(dev_net(skb->dev), destination.label, link_failures, link_failure_count);
     nh = shortest_path->rt_nh;
     pr_debug("Got shortest path");
     set_new_label_stack(skb, label_stack, mpls_label_count, nh, link_failures, link_failure_count);
@@ -274,7 +292,7 @@ int run_ti_mfa(struct sk_buff *skb)
     /* Create new skbuff, because sending original skb
     * via dev_queue_xmit() causes system crash
     */
-    new_skb = create_new_skb(skb);
+    new_skb = skb_copy(skb, GFP_ATOMIC);
     if (new_skb == NULL)
     {
         pr_debug("Copying skb failed on [%s]\n", skb->dev->name);
