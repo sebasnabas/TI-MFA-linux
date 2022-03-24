@@ -23,6 +23,12 @@ struct ti_mfa_neigh {
     bool bos;
 };
 
+struct ti_mfa_nh {
+    struct mpls_nh *nh;
+    u8 neigh_index;
+    unsigned char ha[ETH_ALEN];
+};
+
 struct ti_mfa_shim_hdr {
     unsigned char link_source[ETH_ALEN];
     unsigned char link_dest[ETH_ALEN];
