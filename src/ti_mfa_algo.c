@@ -317,7 +317,7 @@ static int __run_ti_mfa(struct sk_buff *skb)
 
     pr_debug("dest: %pM, src: %pM\n", next_hop.ha, skb->dev->dev_addr);
     pr_debug("xmit via %s\n", skb->dev->name);
-    if (neigh_xmit(NEIGH_LINK_TABLE, skb->dev, skb->dev->dev_addr, skb) != NET_XMIT_SUCCESS)
+    if (neigh_xmit(NEIGH_LINK_TABLE, skb->dev, next_hop.ha, skb) != NET_XMIT_SUCCESS)
     {
         pr_err("Error on xmit\n");
         goto out_retry;
