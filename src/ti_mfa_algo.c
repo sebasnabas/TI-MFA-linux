@@ -264,7 +264,9 @@ static int __run_ti_mfa(struct sk_buff *skb)
     uint mpls_label_count = 0;
     uint link_failure_count = 0;
     struct ti_mfa_nh next_hop;
-    struct ethhdr *ethh = eth_hdr(skb);
+    struct ethhdr ethh = *eth_hdr(skb);
+
+    skb_pull(skb, sizeof(ethh));
 
     mpls_label_count = get_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
 
@@ -291,25 +293,13 @@ static int __run_ti_mfa(struct sk_buff *skb)
     next_hop = get_shortest_path(dev_net(skb->dev), destination.label, link_failures, link_failure_count);
     set_new_label_stack(skb, label_stack, mpls_label_count, next_hop, link_failures, link_failure_count);
 
-    /* pr_debug("Reset label stack again\n"); */
-    /* memset(label_stack, 0, sizeof(label_stack)); */
-    /* memset(link_failures, 0, sizeof(link_failures)); */
-    /* mpls_label_count = get_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS); */
-    /* mpls_label_count--; */
-    /* destination = label_stack[mpls_label_count - 1]; */
-    /* pr_debug("Destination: %u\n", destination.label); */
-    /* link_failure_count = get_link_failure_stack(skb, link_failures, MAX_NEW_LABELS); */
-    /* next_hop = get_shortest_path(dev_net(skb->dev), destination.label, link_failures, link_failure_count); */
-    /* pr_debug("Got shortest path AGAIN\n"); */
-    /* goto out_error; */
+    ether_addr_copy(ethh.h_dest, next_hop.ha);
+    ether_addr_copy(ethh.h_source, skb->dev->dev_addr);
 
-    /* set_new_label_stack(skb, label_stack, mpls_label_count, next_hop, link_failures, link_failure_count); */
-    /* goto out_error; */
+    struct ethhdr *neweth = skb_push(skb, sizeof(ethh));
+    *neweth = ethh;
 
-    ether_addr_copy(ethh->h_dest, next_hop.ha);
-    ether_addr_copy(ethh->h_source, skb->dev->dev_addr);
-
-    pr_debug("dest: %pM, src: %pM\n", ethh->h_dest, ethh->h_source);
+    pr_debug("dest: %pM, src: %pM\n", ethh.h_dest, ethh.h_source);
     pr_debug("<== xmit via %s\n", skb->dev->name);
 
     if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
