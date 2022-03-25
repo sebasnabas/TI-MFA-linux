@@ -30,7 +30,6 @@ MODULE_LICENSE("GPL");
 
 extern bool mpls_output_possible(struct net_device *dev);
 
-static struct socket *nl_sk = NULL;
 static struct nf_hook_ops *timfa_hooks;
 static u32 number_of_timfa_hooks;
 
