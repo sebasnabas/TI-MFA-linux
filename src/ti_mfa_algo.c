@@ -29,8 +29,6 @@ static uint get_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded 
         struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
         mpls_entries[label_count] = mpls_entry_decode(mpls_hdr_entry);
 
-        skb_pull(skb, sizeof(*mpls_hdr_entry));
-
         pr_debug("%u: label: %u\n", label_count, mpls_entries[label_count].label);
         label_count++;
 
@@ -40,8 +38,8 @@ static uint get_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded 
         }
     } while (!mpls_entries[label_count - 1].bos);
 
-    /* skb_pull(skb, sizeof(struct mpls_shim_hdr) * label_count); */
-    /* skb_reset_network_header(skb); */
+    skb_pull(skb, sizeof(struct mpls_shim_hdr) * label_count);
+    skb_reset_network_header(skb);
 
     return label_count;
 }
@@ -52,7 +50,6 @@ static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr l
     do {
         struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
         memmove(&link_failures[count], link_failure_entry, sizeof(*link_failure_entry));
-        skb_pull(skb, sizeof(struct ti_mfa_shim_hdr) * count);
         count++;
 
         pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM\n", link_failures[count].node_source, link_failures[count].link_source, link_failures[count].link_dest);
@@ -63,8 +60,8 @@ static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr l
         }
     } while (!link_failures[count - 1].bos);
 
-    /* skb_pull(skb, sizeof(struct ti_mfa_shim_hdr) * count); */
-    /* skb_reset_network_header(skb); */
+    skb_pull(skb, sizeof(struct ti_mfa_shim_hdr) * count);
+    skb_reset_network_header(skb);
 
     return count;
 }
@@ -123,7 +120,7 @@ static struct ti_mfa_nh get_shortest_path(struct net *net, u32 destination, stru
         next_hop.nh = nh;
         next_hop.neigh_index = neigh_index;
         ether_addr_copy(next_hop.ha, neigh->ha);
-        pr_debug("NH mac: %pM, Neigh mac: %pM\n", next_hop.ha, neigh->ha);
+        /* pr_debug("NH mac: %pM, Neigh mac: %pM\n", next_hop.ha, neigh->ha); */
         break;
 
     } endfor_nexthops(rt);
@@ -195,10 +192,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         error = -ENOMEM;
         goto out_free;
     }
-    hh_len = LL_RESERVED_SPACE(out_dev);
-    if (!out_dev->header_ops)
-        hh_len = 0;
-    if (skb_cow(skb, hh_len + new_header_size)) {
+    if (skb_cow(skb, new_header_size)) {
         error = -ENOMEM;
         goto out_free;
     }
@@ -227,6 +221,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     if (link_failure_count > 0)
     {
+        pr_debug("Setting ti-mfa mpls extension shim hdr\n");
         mpls_h[label_count-1] = TI_MFA_MPLS_EXTENSION_HDR;
         label_count--;
         bos = false;
@@ -266,12 +261,10 @@ static int __run_ti_mfa(struct sk_buff *skb)
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
     struct mpls_entry_decoded destination;
-    struct ethhdr *ethh;
     uint mpls_label_count = 0;
     uint link_failure_count = 0;
     struct ti_mfa_nh next_hop;
-
-    skb_pull(skb, sizeof(*ethh));
+    struct ethhdr *ethh = eth_hdr(skb);
 
     mpls_label_count = get_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
 
@@ -298,8 +291,6 @@ static int __run_ti_mfa(struct sk_buff *skb)
     next_hop = get_shortest_path(dev_net(skb->dev), destination.label, link_failures, link_failure_count);
     set_new_label_stack(skb, label_stack, mpls_label_count, next_hop, link_failures, link_failure_count);
 
-    /* pr_debug("3: skb_network_header: %p", skb_network_header(skb)); */
-
     /* pr_debug("Reset label stack again\n"); */
     /* memset(label_stack, 0, sizeof(label_stack)); */
     /* memset(link_failures, 0, sizeof(link_failures)); */
@@ -315,9 +306,13 @@ static int __run_ti_mfa(struct sk_buff *skb)
     /* set_new_label_stack(skb, label_stack, mpls_label_count, next_hop, link_failures, link_failure_count); */
     /* goto out_error; */
 
-    pr_debug("dest: %pM, src: %pM\n", next_hop.ha, skb->dev->dev_addr);
-    pr_debug("xmit via %s\n", skb->dev->name);
-    if (neigh_xmit(NEIGH_LINK_TABLE, skb->dev, next_hop.ha, skb) != NET_XMIT_SUCCESS)
+    ether_addr_copy(ethh->h_dest, next_hop.ha);
+    ether_addr_copy(ethh->h_source, skb->dev->dev_addr);
+
+    pr_debug("dest: %pM, src: %pM\n", ethh->h_dest, ethh->h_source);
+    pr_debug("<== xmit via %s\n", skb->dev->name);
+
+    if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
     {
         pr_err("Error on xmit\n");
         goto out_retry;
