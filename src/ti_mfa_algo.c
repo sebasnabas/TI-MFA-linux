@@ -50,10 +50,10 @@ static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr l
     do {
         struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
     do {
-        memmove(&link_failures[count], &link_failure_entry[count], sizeof(*link_failure_entry));
-        count++;
+        memmove(&link_failures[count], &link_failure_entry[count], sizeof(struct ti_mfa_shim_hdr));
 
         pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM\n", link_failures[count].node_source, link_failures[count].link_source, link_failures[count].link_dest);
+        count++;
 
         if (count > max)
         {
