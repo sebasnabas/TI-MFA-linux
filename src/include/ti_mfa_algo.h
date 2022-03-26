@@ -19,21 +19,22 @@ extern struct ti_mfa_neigh **deleted_nhs;
 
 struct ti_mfa_neigh {
     struct net_device  *nh_dev;
-    u8 mac_address[ETH_ALEN];
-    bool bos;
+    u8                  mac_address[ETH_ALEN];
+    bool                bos;
 };
 
 struct ti_mfa_nh {
-    struct mpls_nh *nh;
-    u8 neigh_index;
-    unsigned char ha[ETH_ALEN];
+    struct net_device   *dev;
+    unsigned char       ha[ETH_ALEN];
+    u8                  labels;
+    u32                 label[MAX_NEW_LABELS];
 };
 
 struct ti_mfa_shim_hdr {
     unsigned char link_source[ETH_ALEN];
     unsigned char link_dest[ETH_ALEN];
     unsigned char node_source[ETH_ALEN];
-    u8 bos;
+    u8            bos;
 } __attribute__((packed));
 
 int run_ti_mfa(struct sk_buff *skb);
