@@ -25,9 +25,9 @@ struct ti_mfa_neigh **deleted_nhs;
 static uint get_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels)
 {
     uint label_count = 0;
+    struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
     do {
-        struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
-        mpls_entries[label_count] = mpls_entry_decode(mpls_hdr_entry);
+        mpls_entries[label_count] = mpls_entry_decode(&mpls_hdr_entry[label_count]);
 
         pr_debug("%u: label: %u\n", label_count, mpls_entries[label_count].label);
         label_count++;
@@ -49,7 +49,8 @@ static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr l
     uint count = 0;
     do {
         struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
-        memmove(&link_failures[count], link_failure_entry, sizeof(*link_failure_entry));
+    do {
+        memmove(&link_failures[count], &link_failure_entry[count], sizeof(*link_failure_entry));
         count++;
 
         pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM\n", link_failures[count].node_source, link_failures[count].link_source, link_failures[count].link_dest);
