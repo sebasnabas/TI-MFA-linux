@@ -47,7 +47,6 @@ static uint get_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded 
 static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max)
 {
     uint count = 0;
-    do {
         struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
     do {
         memmove(&link_failures[count], &link_failure_entry[count], sizeof(struct ti_mfa_shim_hdr));
@@ -69,25 +68,35 @@ static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr l
 
 static const char neigh_tables[4][4] = { "ARP", "IP6", "DEC", "NRT"};
 
+/* Copied from /net/mpls/af_mpls.c { */
+static struct mpls_nh *mpls_get_nexthop(struct mpls_route *rt, u8 index)
+{
+	return (struct mpls_nh *)((u8 *)rt->rt_nh + index * rt->rt_nh_size);
+}
+/* } */
+
 /* Step 2): Determine shortest path P to t based on all link failures in the remaining network G' (Get next hop)
 */
-static struct ti_mfa_nh get_shortest_path(struct net *net, u32 destination, struct ti_mfa_shim_hdr link_failures[], uint link_failure_count)
+static int get_shortest_path(struct net *net, u32 destination,
+                             struct ti_mfa_shim_hdr link_failures[], uint link_failure_count,
+                             struct ti_mfa_nh *next_hop)
 {
-    struct mpls_route *rt = net->mpls.platform_label[destination];
-    struct ti_mfa_nh next_hop = {
-        .nh = NULL,
-        .neigh_index = 0
-    };
+    int error = 0;
+    int nh_index = 0;
+    struct mpls_nh *mpls_next_hop = NULL;
+    struct mpls_route __rcu **platform_label = rcu_dereference(net->mpls.platform_label);
+    struct mpls_route *rt = rcu_dereference(platform_label[destination]);
+    struct neighbour *neigh;
 
     for_nexthops(rt) {
         bool skip = false;
         int i = 0;
         u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
-        struct neighbour *neigh;
+        struct net_device *nh_dev = nh->nh_dev;
 
         switch (nh->nh_via_table) {
             case NEIGH_ARP_TABLE:
-                neigh = __ipv4_neigh_lookup_noref(nh->nh_dev, neigh_index);
+                neigh = __ipv4_neigh_lookup_noref(nh_dev, neigh_index);
                 break;
             default:
                 // @TODO: Support for IPv6
@@ -95,7 +104,7 @@ static struct ti_mfa_nh get_shortest_path(struct net *net, u32 destination, stru
         }
 
         pr_debug("NH: dev: %s, table: %s, mac: %pM\n",
-                 nh->nh_dev->name, neigh_tables[nh->nh_via_table], neigh->ha
+                 nh_dev->name, neigh_tables[nh->nh_via_table], neigh->ha
         );
         pr_debug("labels:\n");
         for (i = 0; i < nh->nh_labels; i++)
@@ -110,7 +119,7 @@ static struct ti_mfa_nh get_shortest_path(struct net *net, u32 destination, stru
             if (ether_addr_equal(neigh->ha, link_failure.link_source)
                 || ether_addr_equal(neigh->ha, link_failure.link_dest)) {
 
-                pr_debug("Found neighbor with broken link [%pM] == [%pM | %pM] skipping...\n", neigh->ha, link_failure.link_source, link_failure.link_dest);
+                pr_debug("Found neighbor with broken link [%pM] == [src: %pM | dest: %pM] skipping...\n", neigh->ha, link_failure.link_source, link_failure.link_dest);
                 skip = true;
                 break;
             }
@@ -118,15 +127,27 @@ static struct ti_mfa_nh get_shortest_path(struct net *net, u32 destination, stru
 
         if (skip) continue;
 
-        next_hop.nh = nh;
-        next_hop.neigh_index = neigh_index;
-        ether_addr_copy(next_hop.ha, neigh->ha);
-        /* pr_debug("NH mac: %pM, Neigh mac: %pM\n", next_hop.ha, neigh->ha); */
-        break;
+        nh_index = nhsel;
 
     } endfor_nexthops(rt);
 
-    return next_hop;
+    mpls_next_hop = mpls_get_nexthop(rt, nh_index);
+
+    if (mpls_next_hop == NULL) return -1;
+
+    next_hop->dev = mpls_next_hop->nh_dev;
+    next_hop->labels = mpls_next_hop->nh_labels;
+    memmove(next_hop->label, mpls_next_hop->nh_label, sizeof(*(mpls_next_hop->nh_label)));
+    ether_addr_copy(next_hop->ha, neigh->ha);
+    pr_debug("NH mac: %pM, Neigh mac: %pM\n", next_hop->ha, neigh->ha);
+
+    if (next_hop->label == NULL)
+    {
+        pr_debug("Next hop is null\n");
+        return -1;
+    }
+
+    return error;
 }
 
 /* Step 3):
@@ -140,23 +161,22 @@ static struct ti_mfa_nh get_shortest_path(struct net *net, u32 destination, stru
 *      v_i as starting node until v_i=t
 */
 int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded orig_label_path[], unsigned int orig_label_count,
-                        struct ti_mfa_nh next_hop, const struct ti_mfa_shim_hdr link_failures[], unsigned int link_failure_count)
+                        const struct ti_mfa_nh *nh, const struct ti_mfa_shim_hdr link_failures[], unsigned int link_failure_count)
 {
     int error = 0;
     int i, j;
-    unsigned int hh_len, mtu, ti_mfa_hdr_size, mpls_hdr_size, new_header_size;
+    unsigned int mtu, ti_mfa_hdr_size, mpls_hdr_size, headroom, new_header_size = 0;
     unsigned int label_count = 0;
-    struct mpls_nh *nh = next_hop.nh;
-    struct mpls_entry_decoded *new_label_stack = kmalloc_array(nh->nh_labels, sizeof(struct mpls_entry_decoded), GFP_ATOMIC);
-    struct net_device *out_dev = nh->nh_dev;
+    struct mpls_entry_decoded *new_label_stack = kmalloc_array(nh->labels, sizeof(struct mpls_entry_decoded), GFP_KERNEL);
+    struct net_device *out_dev = nh->dev;
     struct ti_mfa_shim_hdr *ti_mfa_h;
     struct mpls_shim_hdr *mpls_h;
     bool bos = false;
 
     // @TODO: Validate the node computing
     for (i = 0; i < orig_label_count; i++) {
-        for (j = 0; j < nh->nh_labels; j++) {
-            if (nh->nh_label[j] != orig_label_path[i].label)
+        for (j = 0; j < nh->labels; j++) {
+            if (nh->label[j] != orig_label_path[i].label)
             {
                 continue;
             }
@@ -171,6 +191,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         /* +1 for extension label */
         label_count++;
     }
+
     mpls_hdr_size = label_count * sizeof(struct mpls_shim_hdr) ;
     ti_mfa_hdr_size =  link_failure_count * sizeof(struct ti_mfa_shim_hdr);
     new_header_size = mpls_hdr_size + ti_mfa_hdr_size;
@@ -178,11 +199,11 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     pr_debug("Calculated header size with label count: %u and link failure count %u\n", label_count, link_failure_count);
 
 
-    /* Copied from /net/mpls/af_mpls.c { */
-    skb_orphan(skb);
-
     if (skb_warn_if_lro(skb))
+    {
+        error = -1;
         goto out_free;
+    }
 
     skb_forward_csum(skb);
 
@@ -190,14 +211,19 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     /* Ensure there is enough space for the headers in the skb */
     if (!((skb->len <= mtu) || (skb_is_gso(skb) && skb_gso_validate_network_len(skb, mtu)))) {
         pr_err("New header is too big\n");
-        error = -ENOMEM;
+        error = -1;
         goto out_free;
     }
-    if (skb_cow(skb, new_header_size)) {
-        error = -ENOMEM;
-        goto out_free;
+
+    headroom = skb_headroom(skb);
+    if (new_header_size - headroom <= 0)
+    {
+        if (skb_expand_head(skb, new_header_size)) {
+            pr_debug("Cannot expand head. headroom: %u, new header size: %u\n", headroom, new_header_size);
+            error = -1;
+            goto out_free;
+        }
     }
-    /* } */
 
     skb->dev = out_dev;
 
@@ -207,6 +233,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         pr_debug("Setting new ti-mfa header\n");
         skb_push(skb, ti_mfa_hdr_size);
         skb_reset_network_header(skb);
+
         ti_mfa_h = ti_mfa_hdr(skb);
         for (i = link_failure_count - 1; i >= 0; i--) {
             struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i];
@@ -237,9 +264,10 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         bos = false;
     }
 
-out_free:
     pr_debug("Label count: %u\n", label_count);
 
+out_free:
+    pr_debug("Freeing label stack\n");
     kfree(new_label_stack);
     return error;
 }
@@ -266,6 +294,7 @@ static int __run_ti_mfa(struct sk_buff *skb)
     uint link_failure_count = 0;
     struct ti_mfa_nh next_hop;
     struct ethhdr ethh = *eth_hdr(skb);
+    struct ethhdr *neweth ;
 
     skb_pull(skb, sizeof(ethh));
 
@@ -280,24 +309,29 @@ static int __run_ti_mfa(struct sk_buff *skb)
     }
     else {
         // @TODO: Remove later
-        /* pr_debug("Got no ti-mfa extension label. Setting it\n"); */
+        pr_debug("Got no ti-mfa extension label. Setting it\n");
 
-        /* link_failures[link_failure_count].bos = true; */
-        /* mac_pton("08:00:27:7d:d3:d6", link_failures[link_failure_count].link_source); */
-        /* mac_pton("08:00:27:83:5d:60", link_failures[link_failure_count].link_dest); */
-        /* mac_pton("08:00:27:cb:3c:41", link_failures[link_failure_count].node_source); */
-        /* pr_debug("-> Link failure: node source: %pM, link source: %pM, link dest: %pM\n", link_failures->node_source, link_failures->link_source, link_failures->link_dest); */
+        link_failures[link_failure_count].bos = true;
+        mac_pton("08:00:27:21:22:2d", link_failures[link_failure_count].link_source);
+        mac_pton("08:00:27:6e:66:dc", link_failures[link_failure_count].link_dest);
+        mac_pton("08:00:27:ea:1b:53", link_failures[link_failure_count].node_source);
+        pr_debug("Adding ti-mfa entry: node source: %pM, link source: %pM, link dest: %pM\n", link_failures->node_source, link_failures->link_source, link_failures->link_dest);
 
-        /* link_failure_count++; */
+        link_failure_count++;
     }
 
-    next_hop = get_shortest_path(dev_net(skb->dev), destination.label, link_failures, link_failure_count);
-    set_new_label_stack(skb, label_stack, mpls_label_count, next_hop, link_failures, link_failure_count);
+    if (get_shortest_path(dev_net(skb->dev), destination.label, link_failures, link_failure_count, &next_hop) != 0)
+        goto out_error;
+
+    rcu_read_lock();
+    if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count) != 0)
+        goto out_error;
+    rcu_read_unlock();
 
     ether_addr_copy(ethh.h_dest, next_hop.ha);
     ether_addr_copy(ethh.h_source, skb->dev->dev_addr);
 
-    struct ethhdr *neweth = skb_push(skb, sizeof(ethh));
+    neweth = skb_push(skb, sizeof(ethh));
     *neweth = ethh;
 
     pr_debug("dest: %pM, src: %pM\n", ethh.h_dest, ethh.h_source);
@@ -312,6 +346,7 @@ static int __run_ti_mfa(struct sk_buff *skb)
     goto out_success;
 
 out_error:
+    rcu_read_unlock();
     return TI_MFA_ERROR;
 
 out_success:
