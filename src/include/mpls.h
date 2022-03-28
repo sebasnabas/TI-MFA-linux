@@ -5,6 +5,8 @@
 #include <linux/mpls.h>
 #include <linux/rtnetlink.h>
 
+extern bool mpls_output_possible(struct net_device *dev);
+
 #define MPLS_LABEL(x)   (x & MPLS_LS_LABEL_MASK) >> MPLS_LS_LABEL_SHIFT;
 #define MPLS_TC(x)      (x & MPLS_LS_TTL_MASK) >> MPLS_LS_TTL_SHIFT;
 #define MPLS_STACK(x)   (x & MPLS_LS_TC_MASK) >> MPLS_LS_TC_SHIFT;
@@ -171,5 +173,13 @@ static inline struct mpls_route *mpls_route_input_rcu(struct net *net, unsigned 
 	}
 	return rt;
 }
+
+/* Copied from /net/mpls/af_mpls.c { */
+static inline struct mpls_nh *mpls_get_nexthop(struct mpls_route *rt, u8 index)
+{
+    return (struct mpls_nh *)((u8 *)rt->rt_nh + index * rt->rt_nh_size);
+}
+/* } */
+
 
 #endif /* TI_MFA_MPLS_H */

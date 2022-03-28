@@ -67,33 +67,31 @@ static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr l
     return count;
 }
 
-static const char neigh_tables[4][4] = { "ARP", "IP6", "DEC", "NRT"};
-
-/* Copied from /net/mpls/af_mpls.c { */
-static struct mpls_nh *mpls_get_nexthop(struct mpls_route *rt, u8 index)
-{
-	return (struct mpls_nh *)((u8 *)rt->rt_nh + index * rt->rt_nh_size);
-}
-/* } */
-
 /* Step 2): Determine shortest path P to t based on all link failures in the remaining network G' (Get next hop)
 */
-static int get_shortest_path(struct net *net, u32 destination,
-                             struct ti_mfa_shim_hdr link_failures[], uint link_failure_count,
+static int get_shortest_path(struct net *net, const u32 destination,
+                             const struct ti_mfa_shim_hdr link_failures[], const uint link_failure_count,
                              struct ti_mfa_nh *next_hop)
 {
     int error = 0;
     int nh_index = 0;
     struct mpls_nh *mpls_next_hop = NULL;
-    struct mpls_route __rcu **platform_label = rcu_dereference(net->mpls.platform_label);
-    struct mpls_route *rt = rcu_dereference(platform_label[destination]);
+    struct mpls_route *rt = mpls_route_input_rcu(net, destination);
     struct neighbour *neigh;
+
+    if (!rt) {
+        pr_err("No route found\n");
+        return -1;
+    }
 
     for_nexthops(rt) {
         bool skip = false;
         int i = 0;
         u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
         struct net_device *nh_dev = nh->nh_dev;
+
+        if (!nh_dev)
+            continue;
 
         switch (nh->nh_via_table) {
             case NEIGH_ARP_TABLE:
@@ -110,8 +108,7 @@ static int get_shortest_path(struct net *net, u32 destination,
         pr_debug("labels:\n");
         for (i = 0; i < nh->nh_labels; i++)
         {
-            pr_debug("%u\n", *(nh->nh_label));
-
+            pr_debug("%u\n", nh->nh_label[i]);
         }
 
         for (i = 0; i < link_failure_count; i++) {
@@ -208,7 +205,8 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     skb_forward_csum(skb);
 
-    mtu = out_dev->mtu;
+    /* Annotate mtu read */
+    mtu = READ_ONCE(out_dev->mtu);
     /* Ensure there is enough space for the headers in the skb */
     if (!((skb->len <= mtu) || (skb_is_gso(skb) && skb_gso_validate_network_len(skb, mtu)))) {
         pr_err("New header is too big\n");
@@ -230,6 +228,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     if (link_failure_count > 0)
     {
+        bool bos = true;
         /* Set new ti-mfa header */
         pr_debug("Setting new ti-mfa header\n");
         skb_push(skb, ti_mfa_hdr_size);
@@ -239,7 +238,10 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         for (i = link_failure_count - 1; i >= 0; i--) {
             struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i];
             ti_mfa_h[i] = ti_mfa_entry;
-            pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM\n", i, ti_mfa_entry.node_source, ti_mfa_entry.link_source, ti_mfa_entry.link_dest);
+            ti_mfa_h[i].bos = bos;
+
+            bos = false;
+            pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM%s\n", i, ti_mfa_entry.node_source, ti_mfa_entry.link_source, ti_mfa_entry.link_dest, ti_mfa_h[i].bos ? " [S]" : "");
         }
     }
 
@@ -286,7 +288,7 @@ out_free:
 *         For the second item on the label stack, start over with
 *         v_i as starting node until v_i=t
 */
-static int __run_ti_mfa(struct sk_buff *skb)
+static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 {
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
@@ -295,7 +297,7 @@ static int __run_ti_mfa(struct sk_buff *skb)
     uint link_failure_count = 0;
     struct ti_mfa_nh next_hop;
     struct ethhdr ethh = *eth_hdr(skb);
-    struct ethhdr *neweth ;
+    struct ethhdr *neweth;
 
     skb_pull(skb, sizeof(ethh));
 
@@ -308,23 +310,11 @@ static int __run_ti_mfa(struct sk_buff *skb)
         destination = label_stack[mpls_label_count - 1];
         link_failure_count = get_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     }
-    else {
-        // @TODO: Remove later
-        pr_debug("Got no ti-mfa extension label. Setting it\n");
-
-        link_failures[link_failure_count].bos = true;
-        mac_pton("08:00:27:21:22:2d", link_failures[link_failure_count].link_source);
-        mac_pton("08:00:27:6e:66:dc", link_failures[link_failure_count].link_dest);
-        mac_pton("08:00:27:ea:1b:53", link_failures[link_failure_count].node_source);
-        pr_debug("Adding ti-mfa entry: node source: %pM, link source: %pM, link dest: %pM\n", link_failures->node_source, link_failures->link_source, link_failures->link_dest);
-
-        link_failure_count++;
-    }
-
-    if (get_shortest_path(dev_net(skb->dev), destination.label, link_failures, link_failure_count, &next_hop) != 0)
-        goto out_error;
 
     rcu_read_lock();
+    if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
+        goto out_error;
+
     if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count) != 0)
         goto out_error;
     rcu_read_unlock();
@@ -358,7 +348,7 @@ out_retry:
     return TI_MFA_RETRY;
 }
 
-int run_ti_mfa(struct sk_buff *skb)
+int run_ti_mfa(struct net *net, struct sk_buff *skb)
 {
     int return_code = TI_MFA_SUCCESS;
     struct sk_buff *new_skb = NULL;
@@ -384,7 +374,7 @@ int run_ti_mfa(struct sk_buff *skb)
 
     do
     {
-       return_code = __run_ti_mfa(new_skb);
+       return_code = __run_ti_mfa(net, new_skb);
     } while (return_code == TI_MFA_RETRY);
 
     if (return_code == TI_MFA_ERROR)

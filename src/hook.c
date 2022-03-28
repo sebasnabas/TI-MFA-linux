@@ -141,16 +141,17 @@ accept:
 static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
                               const struct nf_hook_state * state)
 {
+    unsigned int exit_code = NF_ACCEPT;
     struct mpls_shim_hdr *hdr;
 
     if (!eth_p_mpls(skb->protocol))
     {
-        goto accept;
+        goto exit;
     }
 
     if (!pskb_may_pull(skb, sizeof(*hdr)))
     {
-        goto accept;
+        goto exit;
 
     }
 
@@ -158,60 +159,39 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
 
     if (hdr == NULL)
     {
-        goto accept;
+        goto exit;
     }
 
-    switch(run_ti_mfa(skb))
+    switch(run_ti_mfa(state->net, skb))
     {
         case TI_MFA_SUCCESS:
-            return NF_STOLEN;
+            exit_code = NF_STOLEN;
+            break;
 
         case TI_MFA_ERROR:
             pr_debug("ti-mfa failed on [%s]. Dropping...\n", skb->dev->name);
-            return NF_DROP;
+            exit_code = NF_DROP;
+            break;
 
         /* Handling TI_MFA_PASS */
         default:
-            goto accept;
+            break;
     }
 
-accept:
-    return NF_ACCEPT;
-}
+    if (exit_code == NF_STOLEN)
+        kfree_skb(skb);
 
-static int get_number_of_mpls_capable_net_devices(void)
-{
-    struct net_device *dev;
-    int net_device_count;
-
-    net_device_count = 0;
-
-    rcu_read_lock();
-
-    dev = first_net_device(&init_net);
-    while (dev)
-    {
-        if (!mpls_output_possible(dev))
-        {
-            continue;
-        }
-
-        dev = next_net_device(dev);
-        net_device_count++;
-    }
-
-    rcu_read_unlock();
-
-    pr_debug("Found %d mpls capable devices\n", net_device_count);
-    return net_device_count;
+exit:
+    return exit_code;
 }
 
 static int initialize_hooks(void)
 {
-    int i, return_code, number_of_mpls_devices;
+    int return_code;
+    uint i, number_of_mpls_devices;
     struct net_device *dev;
 
-    number_of_mpls_devices = get_number_of_mpls_capable_net_devices();
+    number_of_mpls_devices = get_number_of_mpls_capable_net_devices(&init_net);
     return_code = 0;
     i = 0;
 
@@ -224,11 +204,6 @@ static int initialize_hooks(void)
 
     while (dev)
     {
-        if (!mpls_output_possible(dev))
-        {
-            goto next_device;
-        }
-
         // START Ingress
         timfa_hooks[i].hook = timfa_ingress_hook;
         timfa_hooks[i].hooknum = NF_NETDEV_INGRESS;
@@ -267,7 +242,6 @@ static int initialize_hooks(void)
         i++;
         // END Egress
 
-next_device:
         dev = next_net_device(dev);
     }
 

@@ -14,22 +14,6 @@
 #define TI_MFA_MPLS_EXTENSION_LABEL     MPLS_LABEL_EXTENSION    /* Indicate that a ti-mfa header follows the mpls header */
 #define TI_MFA_MPLS_EXTENSION_HDR       mpls_entry_encode(TI_MFA_MPLS_EXTENSION_LABEL, 255, 0, true);
 
-// save deleted next_hops
-extern struct ti_mfa_neigh **deleted_nhs;
-
-struct ti_mfa_neigh {
-    struct net_device  *nh_dev;
-    u8                  mac_address[ETH_ALEN];
-    bool                bos;
-};
-
-struct ti_mfa_nh {
-    struct net_device   *dev;
-    unsigned char       ha[ETH_ALEN];
-    u8                  labels;
-    u32                 label[MAX_NEW_LABELS];
-};
-
 struct ti_mfa_shim_hdr {
     unsigned char link_source[ETH_ALEN];
     unsigned char link_dest[ETH_ALEN];
@@ -37,7 +21,22 @@ struct ti_mfa_shim_hdr {
     u8            bos;
 } __attribute__((packed));
 
-int run_ti_mfa(struct sk_buff *skb);
+
+struct ti_mfa_neigh {
+    struct net_device  *dev;
+    u8                  ha[ETH_ALEN];
+};
+
+struct ti_mfa_nh {
+    struct net_device       *dev;
+    unsigned char           ha[ETH_ALEN];
+    u8                      labels;
+    u8                      link_failure_count;
+    u32                     label[MAX_NEW_LABELS];
+    struct ti_mfa_shim_hdr  link_failures[MAX_NEW_LABELS];
+};
+
+int run_ti_mfa(struct net *net, struct sk_buff *skb);
 void ti_mfa_ifdown(struct net_device *dev);
 void ti_mfa_ifup(struct net_device *dev);
 int initialize_ti_mfa(void);
