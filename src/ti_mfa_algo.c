@@ -146,6 +146,51 @@ static int get_shortest_path(struct net *net, const u32 destination,
     return error;
 }
 
+static void set_local_link_failures(struct net *net, u32 destination, struct ti_mfa_nh *next_hop)
+{
+    uint i = 0, j = 0, link_failures = 0;
+    for (i = 0; i < number_of_deleted_neighs; i++) {
+        struct ti_mfa_neigh *neigh = deleted_neighs[i];
+        bool label_found;
+
+        if (!neigh || neigh->net != net)
+            continue;
+
+        for (j = 0; j < neigh->label_count; j++) {
+            if (neigh->labels[j] != destination)
+                continue;
+
+            label_found = true;
+            break;
+        }
+
+        if (!label_found)
+            continue;
+
+        ether_addr_copy(next_hop->link_failures[link_failures].link_source, neigh->dev->dev_addr);
+        ether_addr_copy(next_hop->link_failures[link_failures].link_dest, neigh->ha);
+        /* Not setting link_failures[]->nod_source, beacuse it's the same for everyone */
+        link_failures++;
+    }
+    next_hop->link_failure_count = link_failures;
+}
+
+static bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[], const uint start, const uint count,
+                                    struct ti_mfa_shim_hdr *hdr, bool bos)
+{
+    uint i;
+    for (i = start; i >= 0; i--) {
+        struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i];
+        hdr[i] = ti_mfa_entry;
+        hdr[i].bos = bos;
+
+        bos = false;
+        pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM%s\n", i, hdr[i].node_source, hdr[i].link_source, hdr[i].link_dest, hdr[i].bos ? " [S]" : "");
+    }
+
+    return bos;
+}
+
 /* Step 3):
 *    Add segments to the label stack as follows:
 *      Index the nodes on P as v=v_1,v_2,...,v_x=t
@@ -157,7 +202,8 @@ static int get_shortest_path(struct net *net, const u32 destination,
 *      v_i as starting node until v_i=t
 */
 int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded orig_label_path[], unsigned int orig_label_count,
-                        const struct ti_mfa_nh *nh, const struct ti_mfa_shim_hdr link_failures[], unsigned int link_failure_count)
+                        const struct ti_mfa_nh *nh, const struct ti_mfa_shim_hdr link_failures[], unsigned int link_failure_count,
+                        bool flush_link_failure_stack)
 {
     int error = 0;
     int i, j;
@@ -168,6 +214,9 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     struct ti_mfa_shim_hdr *ti_mfa_h;
     struct mpls_shim_hdr *mpls_h;
     bool bos = false;
+
+    if (!flush_link_failure_stack)
+        link_failure_count += nh->link_failure_count;
 
     // @TODO: Validate the node computing
     for (i = 0; i < orig_label_count; i++) {
@@ -233,13 +282,13 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         skb_reset_network_header(skb);
 
         ti_mfa_h = ti_mfa_hdr(skb);
-        for (i = link_failure_count - 1; i >= 0; i--) {
-            struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i];
-            ti_mfa_h[i] = ti_mfa_entry;
-            ti_mfa_h[i].bos = bos;
 
-            bos = false;
-            pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM%s\n", i, ti_mfa_entry.node_source, ti_mfa_entry.link_source, ti_mfa_entry.link_dest, ti_mfa_h[i].bos ? " [S]" : "");
+        bos = fill_link_failure_stack(nh->link_failures, 0, nh->link_failure_count, ti_mfa_h, bos);
+
+        if (!flush_link_failure_stack && link_failure_count < MAX_NEW_LABELS) {
+            fill_link_failure_stack(link_failures, nh->link_failure_count, link_failure_count - nh->link_failure_count,
+                                    ti_mfa_h, bos
+            );
         }
     }
 
@@ -313,7 +362,9 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
         goto out_error;
 
-    if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count) != 0)
+    set_local_link_failures(net, destination.label, &next_hop);
+
+    if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count, false) != 0)
         goto out_error;
     rcu_read_unlock();
 
@@ -466,6 +517,7 @@ void ti_mfa_ifdown(struct net_device *dev)
 
             if (!found_deleted_neigh) {
                 deleted_neighs[tmp] = kzalloc(sizeof(struct ti_mfa_neigh), GFP_KERNEL);
+                deleted_neighs[tmp]->net = net;
                 deleted_neighs[tmp]->dev = nh->nh_dev;
                 ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
                 tmp++;

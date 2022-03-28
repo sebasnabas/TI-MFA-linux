@@ -23,6 +23,7 @@ struct ti_mfa_shim_hdr {
 
 
 struct ti_mfa_neigh {
+    struct net         *net;
     struct net_device  *dev;
     u8                  ha[ETH_ALEN];
     u8                  label_count;
