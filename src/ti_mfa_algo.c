@@ -102,9 +102,7 @@ static int get_shortest_path(struct net *net, const u32 destination,
                 break;
         }
 
-        pr_debug("NH: dev: %s, table: %s, mac: %pM\n",
-                 nh_dev->name, neigh_tables[nh->nh_via_table], neigh->ha
-        );
+        pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, neigh->ha);
         pr_debug("labels:\n");
         for (i = 0; i < nh->nh_labels; i++)
         {
@@ -395,8 +393,6 @@ void ti_mfa_ifdown(struct net_device *dev)
     if (!dev)
         return;
 
-    pr_debug("deleted_neighs: %u\n", number_of_deleted_neighs);
-
     pr_debug("ifdown for dev %s\n", dev->name);
 
     platform_label = rtnl_dereference(net->mpls.platform_label);
@@ -432,12 +428,38 @@ void ti_mfa_ifdown(struct net_device *dev)
                 break;
             }
 
+            pr_debug("nh: %pM", neigh->ha);
+
             for (i = 0; i < tmp; i++) {
                 if (deleted_neighs[i] == NULL)
                     continue;
 
                 if (deleted_neighs[i]->dev == nh->nh_dev) {
+                    uint j = 0;
+                    struct ti_mfa_neigh *deleted_neigh = deleted_neighs[i];
                     found_deleted_neigh = true;
+
+                    if (nh->nh_labels + deleted_neigh->label_count > MAX_NEW_LABELS) {
+                        pr_err("Cannot save labels of affected next hop\n");
+                        continue;
+                    }
+
+                    for (j = 0; j < nh->nh_labels; j++) {
+                        uint index = j + deleted_neigh->label_count;
+                        uint k = 0;
+                        bool found = false;
+                        for (k = 0; k < deleted_neigh->label_count; k++) {
+                            if (deleted_neigh->labels[k] != nh->nh_label[k])
+                                continue;
+
+                            found = true;
+                            break;
+                        }
+                        deleted_neigh->labels[index] = nh->nh_label[j];
+                        pr_debug("Added label %u\n", deleted_neigh->labels[index]);
+                    }
+
+                    deleted_neigh->label_count += j;
                     continue;
                 }
             }
@@ -448,20 +470,10 @@ void ti_mfa_ifdown(struct net_device *dev)
                 ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
                 tmp++;
             }
-
-            pr_debug("number_of_deleted_neighs: %u\n", tmp);
-
         } endfor_nexthops(rt);
     }
-
     number_of_deleted_neighs = tmp;
-
-    pr_debug("Deleted neighs: %u\n", number_of_deleted_neighs);
-    for (index = 0; index < number_of_deleted_neighs; index++) {
-        if (deleted_neighs[index] == NULL)
-            continue;
-        pr_debug("%u: ha: %pM\n", index, deleted_neighs[index]->ha);
-    }
+    pr_debug("deleted_neighs: %u\n", number_of_deleted_neighs);
 }
 
 void ti_mfa_ifup(struct net_device *dev)
