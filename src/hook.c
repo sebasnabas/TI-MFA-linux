@@ -6,6 +6,7 @@
 #include <linux/netdevice.h>
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
+#include <linux/notifier.h>
 #include <linux/rtnetlink.h>
 #include <linux/socket.h>
 #include <net/mpls.h>
@@ -28,10 +29,35 @@ MODULE_LICENSE("GPL");
 // @TODO: Figure out to make this module dependent on mpls
 // MODULE_SOFTDEP("post: mpls_router");
 
-extern bool mpls_output_possible(struct net_device *dev);
-
 static struct nf_hook_ops *timfa_hooks;
 static u32 number_of_timfa_hooks;
+
+static int ti_mfa_notify(struct notifier_block *this, unsigned long event, void *ptr)
+{
+    struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+    struct mpls_dev *mdev;
+
+    mdev = mpls_dev_get(dev);
+    if (!mdev)
+        return NOTIFY_OK;
+
+    switch (event) {
+        case NETDEV_GOING_DOWN:
+            ti_mfa_ifdown(dev);
+            break;
+
+        case NETDEV_UP:
+            ti_mfa_ifup(dev);
+        default:
+            break;
+    }
+
+    return NOTIFY_OK;
+}
+
+static struct notifier_block ti_mfa_dev_notifier = {
+    .notifier_call = ti_mfa_notify,
+};
 
 static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
                                        const struct nf_hook_state * state)
@@ -266,37 +292,41 @@ static void unregister_hooks(void)
 
 static int __init timfa_init(void)
 {
-    int err;
-    int labels_total = init_net.mpls.platform_labels;
-
-    deleted_nhs = kmalloc_array(labels_total, sizeof(struct ti_mfa_nh *), GFP_KERNEL);
+    int err = 0;
 
     pr_info("TI-MFA started\n");
 
     err = initialize_hooks();
-    if (err)
+    if (err != 0)
+        goto out;
+
+    err = initialize_ti_mfa();
+    if (err != 0)
         goto out_unregister;
+
+    err = register_netdevice_notifier(&ti_mfa_dev_notifier);
+    if (err != 0)
+        goto out_cleanup;
 
 out:
     return err;
 
-out_release:
-    kfree(deleted_nhs);
-    goto out;
+out_cleanup:
+    cleanup_ti_mfa();
+    goto out_unregister;
 
 out_unregister:
     unregister_hooks();
-    goto out_release;
+    goto out_cleanup;
 }
 
 static void __exit timfa_exit(void)
 {
     pr_debug("TI-MFA shutting down\n");
 
-    kfree(deleted_nhs);
-
+    unregister_netdevice_notifier(&ti_mfa_dev_notifier);
+    cleanup_ti_mfa();
     unregister_hooks();
-
     kfree(timfa_hooks);
 
     pr_info("TI-MFA shut down\n");

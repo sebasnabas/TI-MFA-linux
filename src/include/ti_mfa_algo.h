@@ -39,6 +39,9 @@ struct ti_mfa_shim_hdr {
 
 int run_ti_mfa(struct sk_buff *skb);
 void ti_mfa_ifdown(struct net_device *dev);
+void ti_mfa_ifup(struct net_device *dev);
+int initialize_ti_mfa(void);
+void cleanup_ti_mfa(void);
 
 static inline struct ti_mfa_shim_hdr *ti_mfa_hdr(const struct sk_buff *skb)
 {

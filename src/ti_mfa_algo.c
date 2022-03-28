@@ -17,8 +17,9 @@
 #include "include/ti_mfa_algo.h"
 #include "include/utils.h"
 
-struct ti_mfa_neigh **deleted_nhs;
-
+#define DELETED_NEIGHS_INITIAL_SIZE MAX_NEW_LABELS
+static struct ti_mfa_neigh **deleted_neighs;
+static uint number_of_deleted_neighs;
 
 /* Step 1): Decode mpls labels, remove them from header and save them
 */
@@ -394,11 +395,19 @@ int run_ti_mfa(struct sk_buff *skb)
     return return_code;
 }
 
+
 void ti_mfa_ifdown(struct net_device *dev)
 {
     struct mpls_route __rcu **platform_label;
     struct net *net = dev_net(dev);
-    unsigned index;
+    unsigned index = 0, tmp = number_of_deleted_neighs;
+
+    if (!dev)
+        return;
+
+    pr_debug("deleted_neighs: %u\n", number_of_deleted_neighs);
+
+    pr_debug("ifdown for dev %s\n", dev->name);
 
     platform_label = rtnl_dereference(net->mpls.platform_label);
     for (index = 0; index < net->mpls.platform_labels; index++)
@@ -406,5 +415,116 @@ void ti_mfa_ifdown(struct net_device *dev)
         struct mpls_route *rt = rtnl_dereference(platform_label[index]);
         if (!rt)
             continue;
+
+        for_nexthops(rt) {
+            struct neighbour *neigh;
+            uint i = 0;
+            u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
+            bool found_deleted_neigh = false;
+
+            if (nh->nh_dev && nh->nh_dev != dev)
+                continue;
+
+            switch (nh->nh_via_table) {
+                case NEIGH_ARP_TABLE:
+                    neigh = __ipv4_neigh_lookup_noref(nh->nh_dev, neigh_index);
+                    break;
+                default:
+                    // @TODO: Support for IPv6
+                    break;
+            }
+
+            if (neigh == NULL || is_zero_ether_addr(neigh->ha) || neigh->dev != dev)
+                continue;
+
+            if (number_of_deleted_neighs > 0 && number_of_deleted_neighs % DELETED_NEIGHS_INITIAL_SIZE == 0) {
+                pr_err("Not enough space in deleted neighbor array. Len: %u\n", number_of_deleted_neighs);
+                break;
+            }
+
+            for (i = 0; i < tmp; i++) {
+                if (deleted_neighs[i] == NULL)
+                    continue;
+
+                if (deleted_neighs[i]->dev == nh->nh_dev) {
+                    found_deleted_neigh = true;
+                    continue;
+                }
+            }
+
+            if (!found_deleted_neigh) {
+                deleted_neighs[tmp] = kzalloc(sizeof(struct ti_mfa_neigh), GFP_KERNEL);
+                deleted_neighs[tmp]->dev = nh->nh_dev;
+                ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
+                tmp++;
+            }
+
+            pr_debug("number_of_deleted_neighs: %u\n", tmp);
+
+        } endfor_nexthops(rt);
     }
+
+    number_of_deleted_neighs = tmp;
+
+    pr_debug("Deleted neighs: %u\n", number_of_deleted_neighs);
+    for (index = 0; index < number_of_deleted_neighs; index++) {
+        if (deleted_neighs[index] == NULL)
+            continue;
+        pr_debug("%u: ha: %pM\n", index, deleted_neighs[index]->ha);
+    }
+}
+
+void ti_mfa_ifup(struct net_device *dev)
+{
+    struct ti_mfa_neigh **tmp = kcalloc(DELETED_NEIGHS_INITIAL_SIZE, sizeof(struct ti_mfa_neigh *), GFP_KERNEL);
+    uint i = 0, j = 0;
+
+    if (tmp == NULL) {
+        pr_err("Could not allocated tmp array\n");
+        return;
+    }
+
+    for (i = 0; i < number_of_deleted_neighs; i++) {
+        if (deleted_neighs[i] == NULL || deleted_neighs[i]->dev == NULL)
+            continue;
+
+        if (deleted_neighs[i]->dev == dev) {
+            pr_debug("Freeing neigh with ha: %pM\n", deleted_neighs[i]->ha);
+            kfree(deleted_neighs[i]);
+            deleted_neighs[i] = NULL;
+            continue;
+        }
+
+        tmp[j] = kzalloc(sizeof(struct ti_mfa_neigh), GFP_KERNEL);
+        memmove(tmp[j], deleted_neighs[i], sizeof(struct ti_mfa_neigh));
+        j++;
+    }
+
+    kfree(deleted_neighs);
+    deleted_neighs = tmp;
+    number_of_deleted_neighs = j;
+}
+
+int initialize_ti_mfa(void)
+{
+    number_of_deleted_neighs = 0;
+    deleted_neighs = kcalloc(DELETED_NEIGHS_INITIAL_SIZE, sizeof(struct ti_mfa_neigh *), GFP_KERNEL);
+
+    if (deleted_neighs == NULL) {
+        pr_debug("Could not allocate deleted_neighs\n");
+        return -ENOMEM;
+    }
+
+    return 0;
+}
+
+void cleanup_ti_mfa(void)
+{
+    uint i = 0;
+    for (i = 0; i < number_of_deleted_neighs; i++) {
+        if (deleted_neighs[i] == NULL) continue;
+
+        kfree(deleted_neighs[i]);
+    }
+    kfree(deleted_neighs);
 }
