@@ -148,10 +148,11 @@ static int get_shortest_path(struct net *net, const u32 destination,
 
 static void set_local_link_failures(struct net *net, u32 destination, struct ti_mfa_nh *next_hop)
 {
-    uint i = 0, j = 0, link_failures = 0;
+    uint i = 0, link_failures = 0;
     for (i = 0; i < number_of_deleted_neighs; i++) {
         struct ti_mfa_neigh *neigh = deleted_neighs[i];
-        bool label_found;
+        uint j = 0;
+        bool label_found = false;
 
         if (!neigh || neigh->net != net)
             continue;
@@ -169,20 +170,23 @@ static void set_local_link_failures(struct net *net, u32 destination, struct ti_
 
         ether_addr_copy(next_hop->link_failures[link_failures].link_source, neigh->dev->dev_addr);
         ether_addr_copy(next_hop->link_failures[link_failures].link_dest, neigh->ha);
-        /* Not setting link_failures[]->nod_source, beacuse it's the same for everyone */
+        /* Not setting link_failures[]->node_source, because it's the same for all of them */
+        pr_debug("Adding link failure to node %pM for label %u\n", next_hop->link_failures[link_failures].link_dest, destination);
         link_failures++;
     }
     next_hop->link_failure_count = link_failures;
 }
 
-static bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[], const uint start, const uint count,
-                                    struct ti_mfa_shim_hdr *hdr, bool bos)
+static bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[], const uint total, const uint count,
+                                    struct ti_mfa_shim_hdr *hdr, struct net_device *dev, bool bos)
 {
-    uint i;
-    for (i = start; i >= 0; i--) {
-        struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i];
+    int i, end = total - count;
+
+    for (i = total - 1; i >= end; i--) {
+        struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i - end];
         hdr[i] = ti_mfa_entry;
         hdr[i].bos = bos;
+        ether_addr_copy(hdr[i].node_source, dev->dev_addr);
 
         bos = false;
         pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM%s\n", i, hdr[i].node_source, hdr[i].link_source, hdr[i].link_dest, hdr[i].bos ? " [S]" : "");
@@ -283,11 +287,11 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
         ti_mfa_h = ti_mfa_hdr(skb);
 
-        bos = fill_link_failure_stack(nh->link_failures, 0, nh->link_failure_count, ti_mfa_h, bos);
+        bos = fill_link_failure_stack(nh->link_failures, link_failure_count, nh->link_failure_count, ti_mfa_h, out_dev, bos);
 
         if (!flush_link_failure_stack && link_failure_count < MAX_NEW_LABELS) {
             fill_link_failure_stack(link_failures, nh->link_failure_count, link_failure_count - nh->link_failure_count,
-                                    ti_mfa_h, bos
+                                    ti_mfa_h, out_dev, bos
             );
         }
     }
@@ -506,6 +510,8 @@ void ti_mfa_ifdown(struct net_device *dev)
                             found = true;
                             break;
                         }
+                        if (found)
+                            continue;
                         deleted_neigh->labels[index] = nh->nh_label[j];
                         pr_debug("Added label %u\n", deleted_neigh->labels[index]);
                     }
@@ -516,10 +522,29 @@ void ti_mfa_ifdown(struct net_device *dev)
             }
 
             if (!found_deleted_neigh) {
+                uint j = 0;
                 deleted_neighs[tmp] = kzalloc(sizeof(struct ti_mfa_neigh), GFP_KERNEL);
                 deleted_neighs[tmp]->net = net;
                 deleted_neighs[tmp]->dev = nh->nh_dev;
                 ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
+                for (j = 0; j < nh->nh_labels; j++) {
+                    uint index = j + deleted_neighs[tmp]->label_count;
+                    uint k = 0;
+                    bool found = false;
+                    for (k = 0; k < deleted_neighs[tmp]->label_count; k++) {
+                        if (deleted_neighs[tmp]->labels[k] != nh->nh_label[k])
+                            continue;
+
+                        found = true;
+                        break;
+                    }
+                    if (found)
+                        continue;
+                    deleted_neighs[tmp]->labels[index] = nh->nh_label[j];
+                    pr_debug("Added label %u\n", deleted_neighs[tmp]->labels[index]);
+                }
+                pr_debug("Added neigh %u: %pM\n", tmp, deleted_neighs[tmp]->ha);
+                deleted_neighs[tmp]->label_count += j;
                 tmp++;
             }
         } endfor_nexthops(rt);
