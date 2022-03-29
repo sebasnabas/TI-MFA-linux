@@ -182,6 +182,8 @@ static bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[]
 {
     int i, end = total - count;
 
+    pr_debug("total: %u, count: %u, end: %u\n", total, count, end);
+
     for (i = total - 1; i >= end; i--) {
         struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i - end];
         hdr[i] = ti_mfa_entry;
@@ -269,7 +271,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     if (new_header_size - headroom <= 0)
     {
         if (skb_expand_head(skb, new_header_size)) {
-            pr_debug("Cannot expand head. headroom: %u, new header size: %u\n", headroom, new_header_size);
+            pr_err("Cannot expand head. headroom: %u, new header size: %u\n", headroom, new_header_size);
             error = -1;
             goto out_free;
         }
@@ -279,6 +281,8 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     if (link_failure_count > 0)
     {
+        uint new_link_failure_count = nh->link_failure_count;
+        uint old_link_failure_count = link_failure_count - new_link_failure_count;
         bool bos = true;
         /* Set new ti-mfa header */
         pr_debug("Setting new ti-mfa header\n");
@@ -287,10 +291,11 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
         ti_mfa_h = ti_mfa_hdr(skb);
 
-        bos = fill_link_failure_stack(nh->link_failures, link_failure_count, nh->link_failure_count, ti_mfa_h, out_dev, bos);
+        bos = fill_link_failure_stack(nh->link_failures, link_failure_count, new_link_failure_count, ti_mfa_h, out_dev, bos);
 
         if (!flush_link_failure_stack && link_failure_count < MAX_NEW_LABELS) {
-            fill_link_failure_stack(link_failures, nh->link_failure_count, link_failure_count - nh->link_failure_count,
+            pr_debug("Not flushing link failure stack\n");
+            fill_link_failure_stack(link_failures, old_link_failure_count, old_link_failure_count,
                                     ti_mfa_h, out_dev, bos
             );
         }
@@ -318,10 +323,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         bos = false;
     }
 
-    pr_debug("Label count: %u\n", label_count);
-
 out_free:
-    pr_debug("Freeing label stack\n");
     kfree(new_label_stack);
     return error;
 }
