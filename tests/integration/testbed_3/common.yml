@@ -27,6 +27,24 @@
         sysctl_set: true
         reload: true
 
+    - name: Configure arp_announce
+      ansible.posix.sysctl:
+        name: "net.ipv4.conf.{{ item }}.arp_announce"
+        value: 2
+        state: present
+        sysctl_set: true
+        reload: true
+      loop: "{{ ansible_interfaces | reject('equalto', 'lo') | list  + ['default']}}"
+
+    - name: Configure arp_notify
+      ansible.posix.sysctl:
+        name: "net.ipv4.conf.{{ item }}.arp_notify"
+        value: 1
+        state: present
+        sysctl_set: true
+        reload: true
+      loop: "{{ ansible_interfaces | reject('equalto', 'lo') | list  + ['default']}}"
+
     - name: Configure and start OSPF with Segment Routing
       block:
         - name: Add OSPF configuration for loopback
