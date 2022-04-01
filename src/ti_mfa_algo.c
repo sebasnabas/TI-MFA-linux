@@ -113,7 +113,8 @@ static int get_shortest_path(struct net *net, const u32 destination,
             struct ti_mfa_shim_hdr link_failure = link_failures[i];
 
             if (ether_addr_equal(neigh->ha, link_failure.link_source)
-                || ether_addr_equal(neigh->ha, link_failure.link_dest)) {
+                || ether_addr_equal(neigh->ha, link_failure.link_dest)
+                || ether_addr_equal(neigh->ha, link_failure.node_source)) {
 
                 pr_debug("Found neighbor with broken link [%pM] == [src: %pM | dest: %pM] skipping...\n", neigh->ha, link_failure.link_source, link_failure.link_dest);
                 skip = true;
@@ -182,8 +183,6 @@ static bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[]
 {
     int i, end = total - count;
 
-    pr_debug("total: %u, count: %u, end: %u\n", total, count, end);
-
     for (i = total - 1; i >= end; i--) {
         struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i - end];
         hdr[i] = ti_mfa_entry;
@@ -215,7 +214,8 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     int i, j;
     unsigned int mtu, ti_mfa_hdr_size, mpls_hdr_size, headroom, new_header_size = 0;
     unsigned int label_count = 0;
-    struct mpls_entry_decoded *new_label_stack = kmalloc_array(nh->labels, sizeof(struct mpls_entry_decoded), GFP_KERNEL);
+    const unsigned int max_labels = nh->labels == 0 ? orig_label_count : nh->labels;
+    struct mpls_entry_decoded *new_label_stack = kmalloc_array(max_labels, sizeof(struct mpls_entry_decoded), GFP_KERNEL);
     struct net_device *out_dev = nh->dev;
     struct ti_mfa_shim_hdr *ti_mfa_h;
     struct mpls_shim_hdr *mpls_h;
@@ -224,23 +224,31 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     if (!flush_link_failure_stack)
         link_failure_count += nh->link_failure_count;
 
+    pr_debug("Setting new label stack. orig_label_count: %u\n", orig_label_count);
     // @TODO: Validate the node computing
     for (i = 0; i < orig_label_count; i++) {
         for (j = 0; j < nh->labels; j++) {
+            pr_debug("NH Label: %u", nh->label[j]);
             if (nh->label[j] != orig_label_path[i].label)
             {
                 continue;
             }
 
             new_label_stack[label_count] = orig_label_path[i];
+            pr_debug("%u: label: %u %s\n", label_count, new_label_stack[label_count].label, new_label_stack[label_count].bos ? "[S]" : "");
             label_count++;
         }
     }
 
+    if (label_count == 0) {
+        new_label_stack[0] = orig_label_path[0];
+        label_count++;
+    }
+
     if (link_failure_count > 0)
     {
-        /* +1 for extension label */
-        label_count++;
+        /* +1 for extension label and +1 for backup destination */
+        label_count += 2;
     }
 
     mpls_hdr_size = label_count * sizeof(struct mpls_shim_hdr) ;
@@ -248,7 +256,6 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     new_header_size = mpls_hdr_size + ti_mfa_hdr_size;
 
     pr_debug("Calculated header size with label count: %u and link failure count %u\n", label_count, link_failure_count);
-
 
     if (skb_warn_if_lro(skb))
     {
@@ -283,7 +290,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     {
         uint new_link_failure_count = nh->link_failure_count;
         uint old_link_failure_count = link_failure_count - new_link_failure_count;
-        bool bos = true;
+        bos = true;
         /* Set new ti-mfa header */
         pr_debug("Setting new ti-mfa header\n");
         skb_push(skb, ti_mfa_hdr_size);
@@ -308,6 +315,14 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     if (link_failure_count > 0)
     {
+        struct mpls_entry_decoded mpls_entry = new_label_stack[0];
+        bos = true;
+
+        pr_debug("Setting backup destination label");
+
+        mpls_h[label_count - 1] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, bos);
+        label_count--;
+
         pr_debug("Setting ti-mfa mpls extension shim hdr\n");
         mpls_h[label_count-1] = TI_MFA_MPLS_EXTENSION_HDR;
         label_count--;
@@ -318,7 +333,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     for (i = label_count - 1; i >= 0; i--) {
         struct mpls_entry_decoded mpls_entry = new_label_stack[i];
         mpls_h[i] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, bos);
-        pr_debug("%u: label: %u\n", i, mpls_entry.label);
+        pr_debug("%u: label: %u%s\n", i, mpls_entry.label, bos ? "[S]" : "");
 
         bos = false;
     }
@@ -343,6 +358,7 @@ out_free:
 */
 static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 {
+    int i = 0;
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
     struct mpls_entry_decoded destination;
@@ -356,12 +372,33 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     mpls_label_count = get_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
 
+    if (mpls_label_count == 0) {
+        pr_err("Got zero mpls labels\n");
+        return TI_MFA_ERROR;
+    }
+
     destination = label_stack[mpls_label_count - 1];
     if (destination.label == TI_MFA_MPLS_EXTENSION_LABEL) {
         pr_debug("Got ti-mfa extension label\n");
-        mpls_label_count--;
+
+        /* Penultimate hop popping -> Pop backup destination label */
+        if (mpls_label_count == 1) {
+            struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
+            label_stack[0] = mpls_entry_decode(&mpls_hdr_entry[mpls_label_count]);
+            skb_pull(skb, sizeof(struct mpls_shim_hdr));
+            skb_reset_network_header(skb);
+
+        } else {
+            mpls_label_count--;
+        }
         destination = label_stack[mpls_label_count - 1];
         link_failure_count = get_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
+    }
+
+    pr_debug("Destination: %u, Label Stack:\n", destination.label);
+    for (i = 0; i < mpls_label_count; i++)
+    {
+        pr_debug("%d Label: %u%s\n", i, label_stack[i].label, label_stack[i].bos ? "[S]" : "");
     }
 
     rcu_read_lock();
