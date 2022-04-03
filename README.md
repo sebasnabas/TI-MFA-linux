@@ -3,16 +3,15 @@
 **Note:** TI-MFA is currently only implemented for MPLS. Srv6 is not supported (yet).
 
 A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-MFA) algorithm from [1](#ref-1) ("described from the viewpoint of the node v where the packet hits another failed link"):
-```
-1) Flush the label stack except for the destination t.
-2) Based on all link failures stored in the packet header,
-    determine the shortest path P to the destination t in the
-    remaining network G′.
-3) Add segments to the label stack of the packet as follows:
-    • Index the nodes on P as v = v1, v2, . . . , vx = t.
-        Compute the node vi on P with the highest index s.t. the shortest path from v is identical in G′ (with failures) and G (without failures) and set it as the top of the label stack.
-        If this node is v, push the link (v1, v2 = vi) as the top of the label stack.
-        For the second item on the label stack, start over with vi as the starting node, etc., until vi = t.
+>   1) Flush the label stack except for the destination t.
+>   2) Based on all link failures stored in the packet header,
+>       determine the shortest path P to the destination t in the
+>       remaining network G′.
+>   3) Add segments to the label stack of the packet as follows:
+>       • Index the nodes on P as v = v1, v2, . . . , vx = t.
+>           Compute the node vi on P with the highest index s.t. the shortest path from v is identical in G′ (with failures) and G (without failures) and set it as the top of the label stack.
+>           If this node is v, push the link (v1, v2 = vi) as the top of the label stack.
+>           For the second item on the label stack, start over with vi as the starting node, etc., until vi = t.
 ```
 
 ## Implementation
