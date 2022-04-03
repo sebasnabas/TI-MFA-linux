@@ -52,7 +52,7 @@ graph TD
 ```
 ### Packet Header in Case of Link Failure
 ```
-L1 Header | (MPLS Header(s) |) MPLS Header with Extension Label (15) | MPLS Destination Header (| TI-MFA Header(s)) | L3 Header
+L2 Header | MPLS Header(s) | MPLS Header with Extension Label (15) | MPLS Destination Header | TI-MFA Header(s) | L3 Header
 ```
 
 ### Link Failure Header (TI-MFA Header)
