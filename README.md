@@ -12,12 +12,11 @@ A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-M
 >           Compute the node vi on P with the highest index s.t. the shortest path from v is identical in G′ (with failures) and G (without failures) and set it as the top of the label stack.
 >           If this node is v, push the link (v1, v2 = vi) as the top of the label stack.
 >           For the second item on the label stack, start over with vi as the starting node, etc., until vi = t.
-```
 
 ## Implementation
 
 ### Architecture
-Needs Kernel >= 5.16.0 (For Egress Hook)
+Needs Kernel `>= 5.16.0` (For Egress Hook)
 ```mermaid
 graph TD
     IP((Incoming Packet)) --> IH_IF{"if (MPLS)"}
@@ -53,7 +52,7 @@ graph TD
 ```
 ### Packet Header in Case of Link Failure
 ```
-MPLS Header(s)| MPLS Header with Extension Label (15) | MPLS Destination Header | TI-MFA Header(s)
+L1 Header | (MPLS Header(s) |) MPLS Header with Extension Label (15) | MPLS Destination Header (| TI-MFA Header(s)) | L3 Header
 ```
 
 ### Link Failure Header (TI-MFA Header)
