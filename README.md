@@ -79,9 +79,6 @@ graph TB
  * Problems:
     + When using frr with ospf the routes to the directly connected nodes are not MPLS routes.
 
-### Testbed 2
-Python tests based on the OSPF SR topotests from [FRRouting](https://github.com/FRRouting/frr/tree/master/tests/topotests) with the topology from [Testbed 1](#testbed-1).
-
 ### Testbed 3
 Vagrant boxes with the topology from [^2] :
 ```mermaid
