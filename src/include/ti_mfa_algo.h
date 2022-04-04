@@ -39,6 +39,8 @@ struct ti_mfa_nh {
     struct ti_mfa_shim_hdr  link_failures[MAX_NEW_LABELS];
 };
 
+uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels);
+uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max);
 int run_ti_mfa(struct net *net, struct sk_buff *skb);
 void ti_mfa_ifdown(struct net_device *dev);
 void ti_mfa_ifup(struct net_device *dev);

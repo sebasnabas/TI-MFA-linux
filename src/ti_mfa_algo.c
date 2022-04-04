@@ -23,7 +23,7 @@ static uint number_of_deleted_neighs;
 
 /* Step 1): Decode mpls labels, remove them from header and save them
 */
-static uint get_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels)
+uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels)
 {
     uint label_count = 0;
     struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
@@ -45,7 +45,7 @@ static uint get_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded 
     return label_count;
 }
 
-static uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max)
+uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max)
 {
     uint count = 0;
         struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
@@ -370,7 +370,7 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     skb_pull(skb, sizeof(ethh));
 
-    mpls_label_count = get_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
+    mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
 
     if (mpls_label_count == 0) {
         pr_err("Got zero mpls labels\n");
@@ -392,7 +392,7 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
             mpls_label_count--;
         }
         destination = label_stack[mpls_label_count - 1];
-        link_failure_count = get_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
+        link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     }
 
     pr_debug("Destination: %u, Label Stack:\n", destination.label);
