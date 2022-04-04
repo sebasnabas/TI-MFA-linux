@@ -65,5 +65,37 @@ struct ti_mfa_shim_hdr {
 } __attribute__((packed));
 ```
 
+## Tests
+### Testbed 1 {#testbed-1}
+Vagrant boxes with the topology from [^1] :
+```mermaid
+graph TB
+    t --- v_l
+    v_l --- v_m
+    v_m --- v_r
+    t --- v_m
+    t ---v_r
+```
+ * Problems:
+    + When using frr with ospf the routes to the directly connected nodes are not MPLS routes.
+
+### Testbed 2
+Python tests based on the OSPF SR topotests from [FRRouting](https://github.com/FRRouting/frr/tree/master/tests/topotests) with the topology from [Testbed 1](#testbed-1).
+
+### Testbed 3
+Vagrant boxes with the topology from [^2] :
+```mermaid
+graph TB
+    B ---|3| C
+    A ---|1| B
+    A ---|2| C
+    D ---|6| E
+    C ---|5| E
+    B ---|4| D
+    D ---|7| Z
+    E ---|8| Z
+```
+
 # Bibliography
 [^1]: https://www.univie.ac.at/ct/stefan/gi18.pdf
+[^2]: https://conferences.sigcomm.org/sosr/2017/papers/sosr17-demo-sr.pdf
