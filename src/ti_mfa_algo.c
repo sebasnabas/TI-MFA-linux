@@ -390,7 +390,7 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
         /* Penultimate hop popping -> Pop backup destination label */
         if (mpls_label_count == 1) {
-            pr_debug("=> Penultimate hop popping\n");
+            pr_debug("=> Would be Penultimate hop popping\n");
             label_stack[0] = mpls_entry_decode(mpls_hdr_entry);
             php = true;
         }
@@ -418,6 +418,7 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     set_local_link_failures(net, destination.label, &next_hop);
 
     if (next_hop.link_failure_count > 0) {
+        pr_debug("Found local link failures -> Not doing PHP\n");
         php = false;
     }
 
@@ -432,7 +433,7 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
         payload_type = ip_hdr(skb)->version;
 
-        pr_debug("-> Penultimate hop popping\n");
+        pr_debug("Found no local link failures -> Penultimate hop popping\n");
         pr_debug("Payload type: %d\n", payload_type);
 
         switch(payload_type) {
