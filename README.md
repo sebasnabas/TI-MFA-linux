@@ -18,38 +18,44 @@ A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-M
 ### Architecture
 Needs Kernel `>= 5.16.0` (For Egress Hook)
 ```mermaid
-graph TD
+graph TB
     IP((Incoming Packet)) --> IH_IF{"if (MPLS)"}
+
     subgraph NF_IH["Netfilter Ingress Hook"]
-        IH_IF -->|true| IH_IF_TI_MFA{"if (BOS && MPLS Extension Label)"}
-        IH_IF_TI_MFA-->|true| A(Remove TI-MFA headers)
+        IH_IF        -->|true| IH_IF_TI_MFA{"if (BOS && MPLS Extension Label)"}
+        IH_IF_TI_MFA -->|true| A(Remove TI-MFA headers)
     end
-    IH_IF -->|false| R[Kernel Routing]
-    IH_IF_TI_MFA-->|false| R
-    A --> R
 
-    R -->|false| EH_IF{"if (MPLS)"}
-    EH_IF -->|false| OP((Outgoing Packet))
+    IH_IF        -->|false| R[Kernel Routing]
+    IH_IF_TI_MFA -->|false| R
+    A            -->        R
+    R            -->|false| EH_IF{"if (MPLS)"}
+    EH_IF        -->|false| OP((Outgoing Packet))
+
     subgraph NF_EH[Netfilter Egress Hook]
-        EH_IF -->|true| 1_TI_MFA(1. Flush MPLS and/or TI-MFA headers)
-        1_TI_MFA --> 2_TI_MFA(2. Get shortest path)
-        2_TI_MFA --> SLF(Set local link failures)
-        SLF --> 3_TI_MFA(3. Set label stack)
+        EH_IF     -->|true|  1_TI_MFA(1. Flush MPLS and/or TI-MFA headers)
+        1_TI_MFA  -->        2_TI_MFA(2. Get shortest path)
+        2_TI_MFA  -->        SLF(Set local link failures)
+        SLF       -->        IF_LF_PHP{"if (Local Link Failures && NOT PHP)"}
+        IF_LF_PHP -->|true|  3_TI_MFA(3. Set label stack)
+        IF_LF_PHP -->|false| PHP(Set package type to IP)
     end
-    3_TI_MFA --> OP
 
-        subgraph Netdev Notifier
+    SLF     -.-> NEIGH_READ
+    3_TI_MFA -->  OP
+    PHP      -->  OP
+
+    subgraph Netdev Notifier
         NETDEV_GOING_DOWN>NETDEV_GOING_DOWN] --> NEIGH_ADD(Add Entry)
-        NETDEV_UP>NETDEV_UP] --> NEIGH_DEL(Remove Entry)
-        NEIGH_ADD --> NEIGH[(Table of Deleted Neighbours)]
-        NEIGH_DEL --> NEIGH
-        NEIGH_READ[Read entries] <--> NEIGH
+        NETDEV_UP>NETDEV_UP]                 --> NEIGH_DEL(Remove Entry)
+        NEIGH_ADD                            --> NEIGH[(Table of Deleted Neighbours)]
+        NEIGH_DEL                            --> NEIGH
+        NEIGH_READ[Read entries]             --> NEIGH
     end
-
-    SLF --> NEIGH_READ
-
-
 ```
+[^PHP]: [Penultimate hop popping](https://www.rfc-editor.org/rfc/rfc3031.html#section-3.16)
+
+
 ### Packet Header in Case of Link Failure
 ```
 L2 Header | MPLS Header(s) | MPLS Header with Extension Label (15) | MPLS Destination Header | TI-MFA Header(s) | L3 Header
