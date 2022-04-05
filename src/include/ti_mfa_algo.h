@@ -19,7 +19,7 @@ struct ti_mfa_shim_hdr {
     unsigned char link_dest[ETH_ALEN];
     unsigned char node_source[ETH_ALEN];
     u8            bos;
-} __attribute__((packed));
+};
 
 
 struct ti_mfa_neigh {
