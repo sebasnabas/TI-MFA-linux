@@ -1,5 +1,6 @@
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
+#include <linux/ip.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/net.h>
@@ -30,7 +31,7 @@ uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_
     do {
         mpls_entries[label_count] = mpls_entry_decode(&mpls_hdr_entry[label_count]);
 
-        pr_debug("%u: label: %u\n", label_count, mpls_entries[label_count].label);
+        pr_debug("%u: label: %u %s\n", label_count, mpls_entries[label_count].label, mpls_entries[label_count].bos ? "[S]" : "");
         label_count++;
 
         if (label_count > max_labels)
@@ -52,7 +53,7 @@ uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_f
     do {
         memmove(&link_failures[count], &link_failure_entry[count], sizeof(struct ti_mfa_shim_hdr));
 
-        pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM\n", link_failures[count].node_source, link_failures[count].link_source, link_failures[count].link_dest);
+        pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM %s\n", link_failures[count].node_source, link_failures[count].link_source, link_failures[count].link_dest, link_failures[count].bos ? "[S]" : "");
         count++;
 
         if (count > max)
@@ -208,7 +209,7 @@ static bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[]
 */
 int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded orig_label_path[], unsigned int orig_label_count,
                         const struct ti_mfa_nh *nh, const struct ti_mfa_shim_hdr link_failures[], unsigned int link_failure_count,
-                        bool flush_link_failure_stack)
+                        bool flush_link_failure_stack, bool php)
 {
     int error = 0;
     int i, j;
@@ -235,20 +236,25 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
             }
 
             new_label_stack[label_count] = orig_label_path[i];
-            pr_debug("%u: label: %u %s\n", label_count, new_label_stack[label_count].label, new_label_stack[label_count].bos ? "[S]" : "");
+            pr_debug("%u: set label: %u %s\n", label_count, new_label_stack[label_count].label, new_label_stack[label_count].bos ? "[S]" : "");
             label_count++;
         }
     }
 
-    if (label_count == 0) {
+    /* Set destination if not Penultimate hop popping because of failures,
+     * but we'd on the last hop before destination without failures
+     * */
+    if (!php && label_count == 0) {
         new_label_stack[0] = orig_label_path[0];
         label_count++;
     }
 
     if (link_failure_count > 0)
     {
-        /* +1 for extension label and +1 for backup destination */
-        label_count += 2;
+        /* +1 for extension label */
+        label_count++;
+        /* +1 for backup destination */
+        label_count++;
     }
 
     mpls_hdr_size = label_count * sizeof(struct mpls_shim_hdr) ;
@@ -312,28 +318,25 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     skb_push(skb, mpls_hdr_size);
     skb_reset_network_header(skb);
     mpls_h = mpls_hdr(skb);
+    bos = true;
 
     if (link_failure_count > 0)
     {
-        struct mpls_entry_decoded mpls_entry = new_label_stack[0];
-        bos = true;
-
-        pr_debug("Setting backup destination label");
-
-        mpls_h[label_count - 1] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, bos);
         label_count--;
+        pr_debug("Setting backup destination label. Label count = %u", label_count);
+        pr_debug("%u pushing Label: %u %s", label_count, new_label_stack[0].label, bos ? "[S]" : "");
+        mpls_h[label_count] = mpls_entry_encode(new_label_stack[0].label, new_label_stack[0].ttl, new_label_stack[0].tc, bos);
 
-        pr_debug("Setting ti-mfa mpls extension shim hdr\n");
-        mpls_h[label_count-1] = TI_MFA_MPLS_EXTENSION_HDR;
         label_count--;
+        pr_debug("Setting ti-mfa mpls extension shim hdr. Remaining label count = %u\n", label_count);
+        mpls_h[label_count] = TI_MFA_MPLS_EXTENSION_HDR;
         bos = false;
-    } else {
-        bos = true;
     }
+
     for (i = label_count - 1; i >= 0; i--) {
         struct mpls_entry_decoded mpls_entry = new_label_stack[i];
         mpls_h[i] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, bos);
-        pr_debug("%u: label: %u%s\n", i, mpls_entry.label, bos ? "[S]" : "");
+        pr_debug("%u: pushing label: %u%s\n", i, mpls_entry.label, bos ? "[S]" : "");
 
         bos = false;
     }
@@ -358,6 +361,7 @@ out_free:
 */
 static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 {
+    bool php = false;
     int i = 0;
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
@@ -379,36 +383,76 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     destination = label_stack[mpls_label_count - 1];
     if (destination.label == TI_MFA_MPLS_EXTENSION_LABEL) {
+        struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
+
         pr_debug("Got ti-mfa extension label\n");
+        pr_debug("Popping backup destination label\n");
 
         /* Penultimate hop popping -> Pop backup destination label */
         if (mpls_label_count == 1) {
-            struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
-            label_stack[0] = mpls_entry_decode(&mpls_hdr_entry[mpls_label_count]);
-            skb_pull(skb, sizeof(struct mpls_shim_hdr));
-            skb_reset_network_header(skb);
-
-        } else {
+            pr_debug("=> Penultimate hop popping\n");
+            label_stack[0] = mpls_entry_decode(mpls_hdr_entry);
+            php = true;
+        }
+        else {
             mpls_label_count--;
         }
+        skb_pull(skb, sizeof(*mpls_hdr_entry));
+        skb_reset_network_header(skb);
+
         destination = label_stack[mpls_label_count - 1];
         link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     }
 
-    pr_debug("Destination: %u, Label Stack:\n", destination.label);
+    pr_debug("Destination: %u, Label Stack: (%u)\n", destination.label, mpls_label_count);
     for (i = 0; i < mpls_label_count; i++)
     {
-        pr_debug("%d Label: %u%s\n", i, label_stack[i].label, label_stack[i].bos ? "[S]" : "");
+        pr_debug("\t%d Label: %u %s\n", i, label_stack[i].label, label_stack[i].bos ? "[S]" : "");
     }
 
     rcu_read_lock();
+
     if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
         goto out_error;
 
     set_local_link_failures(net, destination.label, &next_hop);
 
-    if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count, false) != 0)
+    if (next_hop.link_failure_count > 0) {
+        php = false;
+    }
+
+    /* Penultimate hop popping -> set skb->protocol to IP proto */
+    if (php) {
+        enum mpls_payload_type payload_type;
+
+        if (!pskb_may_pull(skb, 12)) {
+            pr_err("Cannot pull ip header\n");
+            goto out_error;
+        }
+
+        payload_type = ip_hdr(skb)->version;
+
+        pr_debug("-> Penultimate hop popping\n");
+        pr_debug("Payload type: %d\n", payload_type);
+
+        switch(payload_type) {
+            case MPT_IPV4: {
+                skb->protocol = htons(ETH_P_IP);
+                break;
+            }
+            case MPT_IPV6: {
+                skb->protocol = htons(ETH_P_IPV6);
+                break;
+            }
+            default:
+                pr_err("Unspec\n");
+                skb->protocol = htons(ETH_P_IP);
+                break;
+        }
+    }
+    else if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count, false, php) != 0)
         goto out_error;
+
     rcu_read_unlock();
 
     ether_addr_copy(ethh.h_dest, next_hop.ha);
@@ -416,9 +460,10 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     neweth = skb_push(skb, sizeof(ethh));
     *neweth = ethh;
+    neweth->h_proto = skb->protocol;
 
     pr_debug("dest: %pM, src: %pM\n", ethh.h_dest, ethh.h_source);
-    pr_debug("<== xmit via %s\n", skb->dev->name);
+    pr_debug("<== xmit via %s ==>\n", skb->dev->name);
 
     if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
     {
