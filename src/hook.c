@@ -18,17 +18,11 @@
 #include "include/ti_mfa_algo.h"
 #include "include/utils.h"
 
-#ifndef KBUILD_MODNAME
-#define KBUILD_MODNAME "TI-MFA"
-#endif
-#define DESC "TI-MFA"
-
 MODULE_AUTHOR("Sebastian");
-MODULE_DESCRIPTION(DESC);
+MODULE_DESCRIPTION("Topology Independent Multi-Failure Alternate (TI-MFA)");
 MODULE_VERSION("0.1");
 MODULE_LICENSE("GPL");
-// @TODO: Figure out to make this module dependent on mpls
-// MODULE_SOFTDEP("post: mpls_router");
+MODULE_SOFTDEP("pre: mpls_router");
 
 static struct nf_hook_ops *timfa_hooks;
 static u32 number_of_timfa_hooks;
