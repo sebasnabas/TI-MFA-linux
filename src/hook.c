@@ -1,7 +1,8 @@
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
-#include <linux/module.h>
+#include <linux/ip.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/net.h>
 #include <linux/netdevice.h>
 #include <linux/netfilter.h>
@@ -59,90 +60,12 @@ static struct notifier_block ti_mfa_dev_notifier = {
     .notifier_call = ti_mfa_notify,
 };
 
-static unsigned int timfa_ingress_hook(void *priv, struct sk_buff * skb,
-                                       const struct nf_hook_state * state)
-{
-    struct ethhdr eth;
-    struct ethhdr *ethh;
-    struct mpls_shim_hdr *hdr;
-    struct mpls_entry_decoded mpls_entry;
-    struct ti_mfa_shim_hdr *ti_mfa_h;
-
-    if (!eth_p_mpls(skb->protocol))
-    {
-        goto accept;
-    }
-
-    if (!pskb_may_pull(skb, sizeof(*hdr)))
-    {
-        goto accept;
-
-    }
-
-    hdr = mpls_hdr(skb);
-
-    if (hdr == NULL)
-    {
-        goto accept;
-    }
-
-    mpls_entry = mpls_entry_decode(hdr);
-    pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
-
-    if (!mpls_entry.bos)
-    {
-        struct mpls_entry_decoded second_mpls_entry = mpls_entry_decode(&hdr[1]);
-        if (second_mpls_entry.label != MPLS_LABEL_EXTENSION && !second_mpls_entry.bos)
-        {
-            goto accept;
-        }
-    } else {
-        pr_debug("Got mpls packet without ti-mfa header\n");
-        goto accept;
-    }
-
-    ethh = eth_hdr(skb);
-    eth = *ethh;
-
-    /* Pop regular & extension mpls label */
-    skb_pull(skb, sizeof(*hdr));
-    skb_pull(skb, sizeof(*hdr));
-    skb_reset_network_header(skb);
-
-    /* Pop ti-mfa shim headers */
-    do {
-        ti_mfa_h = ti_mfa_hdr(skb);
-        skb_pull(skb, sizeof(*ti_mfa_h));
-        pr_debug("TI-MFA header pulled:\n");
-        pr_debug("node: %pM, Src: %pM; Dst: %pM %s\n",
-                ti_mfa_h->node_source, ti_mfa_h->link_source, ti_mfa_h->link_dest,
-                ti_mfa_h->bos ? "[S]" : ""
-        );
-    } while (!ti_mfa_h->bos);
-
-    skb_reset_network_header(skb);
-
-    /* Set regular mpls header and eth header again */
-    skb_push(skb, sizeof(*hdr));
-    skb_reset_network_header(skb);
-    hdr = mpls_hdr(skb);
-    *hdr = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, mpls_entry.bos);
-
-    skb_push(skb, sizeof(*ethh));
-    skb_reset_mac_header(skb);
-
-    ethh = eth_hdr(skb);
-    *ethh = eth;
-
-accept:
-    return NF_ACCEPT;
-}
-
 static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
                               const struct nf_hook_state * state)
 {
     unsigned int exit_code = NF_ACCEPT;
     struct mpls_shim_hdr *hdr;
+    struct mpls_entry_decoded mpls_entry;
 
     if (!eth_p_mpls(skb->protocol))
     {
@@ -161,6 +84,9 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
     {
         goto exit;
     }
+
+    mpls_entry = mpls_entry_decode(hdr);
+    pr_debug("[%s]:[%s] EGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
 
     switch(run_ti_mfa(state->net, skb))
     {
@@ -204,25 +130,6 @@ static int initialize_hooks(void)
 
     while (dev)
     {
-        // START Ingress
-        timfa_hooks[i].hook = timfa_ingress_hook;
-        timfa_hooks[i].hooknum = NF_NETDEV_INGRESS;
-        timfa_hooks[i].pf = NFPROTO_NETDEV;
-        timfa_hooks[i].priority = NF_IP_PRI_LAST;
-        timfa_hooks[i].dev = dev;
-
-        return_code = nf_register_net_hook(&init_net, &timfa_hooks[i]);
-
-        if (return_code < 0)
-        {
-            pr_err("Registering ingress hook failed for device %s, with %d\n", dev->name, return_code);
-            return return_code;
-        }
-
-        pr_debug("TI-MFA ingress hook successfully registered on device: %s!\n", dev->name);
-        i++;
-        // END Ingress
-
         // START Egress
         timfa_hooks[i].hook = timfa_egress_hook;
         timfa_hooks[i].hooknum = NF_NETDEV_EGRESS;
