@@ -53,7 +53,7 @@ graph TB
         NEIGH_READ[Read entries]             --> NEIGH
     end
 ```
-[^PHP]: [Penultimate hop popping](https://www.rfc-editor.org/rfc/rfc3031.html#section-3.16)
+* PHP: [Penultimate hop popping](https://www.rfc-editor.org/rfc/rfc3031.html#section-3.16)
 
 
 ### Packet Header in Case of Link Failure
@@ -72,7 +72,7 @@ struct ti_mfa_shim_hdr {
 ```
 
 ## Tests
-### Testbed 1 {#testbed-1}
+### Testbed 1
 Vagrant boxes with the topology from [^1] :
 ```mermaid
 graph TB
