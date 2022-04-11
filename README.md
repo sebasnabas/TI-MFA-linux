@@ -17,6 +17,20 @@ A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-M
 
 ### Architecture
 Needs Kernel `>= 5.16.0` (For Egress Hook)
+
+#### Control plane tool
+`ti-mfa-conf` configuration tool for:
+* adding a route
+* deleting a route
+* showing a route
+* deleting all routes
+* showingi all routes
+
+Routes are backup routes in case of a link failure.
+A link failure is specified by 2 hardware addresses.
+A route is an MPLS label
+
+#### Kernel Module (Data plane)
 ```mermaid
 graph TB
     IP((Incoming Packet)) --> IH_IF{"if (MPLS)"}
