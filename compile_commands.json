@@ -1,0 +1,51 @@
+[
+  {
+    "directory": "src",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c11", "-W", "-Wall", "-Wstrict-prototypes", "-Wmissing-prototypes", "-DMODULE-D__KERNEL__", "-nostdinc",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/include",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/arch/x86/include",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/arch/x86/include/generated",
+      "-isystem", "/usr/src/linux/include"
+    ],
+    "file": "hook.c"
+  },
+  {
+    "directory": "src",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c11", "-W", "-Wall", "-Wstrict-prototypes", "-Wmissing-prototypes", "-DMODULE-D__KERNEL__", "-nostdinc",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/include",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/arch/x86/include",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/arch/x86/include/generated",
+      "-isystem", "/usr/src/linux/include"
+    ],
+    "file": "netlink.c"
+  },
+  {
+    "directory": "src",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c11", "-W", "-Wall", "-Wstrict-prototypes", "-Wmissing-prototypes", "-DMODULE-D__KERNEL__", "-nostdinc",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/include",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/arch/x86/include",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/arch/x86/include/generated",
+      "-isystem", "/usr/src/linux/include"
+    ],
+    "file": "ti_mfa_algo.c"
+  },
+  {
+    "directory": "src",
+    "arguments": [
+      "/usr/bin/gcc",
+      "-std=c11", "-W", "-Wall", "-Wstrict-prototypes", "-Wmissing-prototypes", "-DMODULE-D__KERNEL__", "-nostdinc",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/include",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/arch/x86/include",
+      "-isystem", "/lib/modules/5.16.14-arch1-1/build/arch/x86/include/generated",
+      "-isystem", "/usr/src/linux/include"
+    ],
+    "file": "utils.c"
+  }
+]
+
