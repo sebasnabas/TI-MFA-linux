@@ -1,7 +1,7 @@
 .phony: all clean acceptance-tests
 
 all:
-	$(MAKE) -C src
+	$(MAKE) -C src/kernel
 
 clean:
 	$(MAKE) -C src clean

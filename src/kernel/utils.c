@@ -3,7 +3,7 @@
 #include <linux/mpls.h>
 #include <net/mpls.h>
 
-#include "utils.h"
+#include "../include/utils.h"
 
 bool is_not_mpls(struct sk_buff *skb)
 {

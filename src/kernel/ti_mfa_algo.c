@@ -1,5 +1,6 @@
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
+#include <linux/etherdevice.h>
 #include <linux/ip.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -14,9 +15,9 @@
 #include <net/protocol.h>
 #include <net/mpls.h>
 
-#include "include/mpls.h"
-#include "include/ti_mfa_algo.h"
-#include "include/utils.h"
+#include "../include/mpls.h"
+#include "../include/ti_mfa_algo.h"
+#include "../include/utils.h"
 
 #define DELETED_NEIGHS_INITIAL_SIZE MAX_NEW_LABELS
 static struct ti_mfa_neigh **deleted_neighs;

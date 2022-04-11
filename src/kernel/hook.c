@@ -14,9 +14,9 @@
 #include <net/protocol.h>
 #include <net/sock.h>
 
-#include "include/mpls.h"
-#include "include/ti_mfa_algo.h"
-#include "include/utils.h"
+#include "../include/mpls.h"
+#include "../include/ti_mfa_algo.h"
+#include "../include/utils.h"
 
 MODULE_AUTHOR("Sebastian");
 MODULE_DESCRIPTION("Topology Independent Multi-Failure Alternate (TI-MFA)");
