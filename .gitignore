@@ -60,3 +60,6 @@ dkms.conf
 
 # Editor configurations
 .vscode/
+
+.cache/
+.ccls-cache/

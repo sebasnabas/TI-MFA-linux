@@ -1,7 +1,7 @@
 .phony: all clean acceptance-tests
 
 all:
-	$(MAKE) -C src/kernel
+	$(MAKE) -C src/kernel && $(MAKE) -C src/ti-mfa-conf
 
 clean:
 	$(MAKE) -C src clean

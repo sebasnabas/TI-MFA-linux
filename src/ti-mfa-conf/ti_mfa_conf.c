@@ -1,3 +1,6 @@
+/* Modified from https://github.com/netgroup/SRv6-net-prog/blob/master/srext/tools/srconf.c
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,34 +12,25 @@
 #include <linux/genetlink.h>
 #include <errno.h>
 #include <net/if.h>
+
 #include "../include/ti_mfa_conf.h"
 
 int sd;
-int srext_fam_id;
+int ti_mfa_fam_id;
 struct genl_msg req, ans;
-struct  nlattr *nl_attr[SR_A_MAX + 1];
+struct  nlattr *nl_attr[TI_MFA_A_MAX + 1];
 
-struct sr_param params;
+struct ti_mfa_param params;
 
-void reset_parameters() {
-    params.table    = NULL;
-    params.command  = NULL;
-    params.sid      = NULL;
-    params.func     = NULL;
-    params.next     = NULL;
-    params.oif      = NULL;
-    params.iif      = NULL;
-
-    params.source   = NULL;
-    params.addr     = NULL;
-    params.segs     = NULL;
-    params.sid_lst  = NULL;
-    params.left     = NULL;
-    params.number   = NULL;
-    params.flags    = NULL;
-
-    free(params.mac);
-    params.mac      = NULL;
+static void reset_parameters() {
+    params.command            = NULL;
+    free(params.link_source);
+    params.link_source        = NULL;
+    free(params.link_dest);
+    params.link_dest          = NULL;
+    free(params.dest);
+    params.dest               = NULL;
+    params.backup_dev_name    = NULL;
 }
 
 static void print_nl_attrs()
@@ -44,7 +38,7 @@ static void print_nl_attrs()
     int i;
     void *data;
 
-    for (i = 0; i <= SR_A_MAX; i++) {
+    for (i = 0; i <= TI_MFA_A_MAX; i++) {
         if (nl_attr[i] == NULL) continue;
         data = GENLMSG_NLA_DATA(nl_attr[i]);
         printf("%s\n", (char *) data);
@@ -54,12 +48,12 @@ static void print_nl_attrs()
 static void reset_nl_attrs(void)
 {
     int i;
-    for (i = 0; i <= SR_A_MAX; i++) {
+    for (i = 0; i <= TI_MFA_A_MAX; i++) {
         nl_attr[i] = NULL;
     }
 }
 
-void parse_nl_attrs()
+static void parse_nl_attrs()
 {
     unsigned int n_attrs = 0;
     struct nlattr *na;
@@ -79,7 +73,7 @@ void parse_nl_attrs()
     }
 }
 
-int do_receive_response()
+static int do_receive_response()
 {
     memset(ans.buf, 0, MAX_BUF_LEN);
     int rep_len = recv(sd, &ans, sizeof(ans), 0);
@@ -102,7 +96,7 @@ int do_receive_response()
     return 0;
 }
 
-int receive_response()
+static int receive_response()
 {
     while (do_receive_response());
     print_nl_attrs();
@@ -138,7 +132,7 @@ static void set_nl_attr(struct nlattr *na, const unsigned int type,
     memcpy(GENLMSG_NLA_DATA(na), data, length);
 }
 
-int create_nl_socket(void)
+static int create_nl_socket(void)
 {
     int fd;
 
@@ -152,10 +146,10 @@ int create_nl_socket(void)
     return 0;
 }
 
-void set_nl_header(int command)
+static void set_nl_header(int command)
 {
     req.n.nlmsg_len     = NLMSG_LENGTH(GENL_HDRLEN);
-    req.n.nlmsg_type    = srext_fam_id;
+    req.n.nlmsg_type    = ti_mfa_fam_id;
     req.n.nlmsg_flags   = NLM_F_REQUEST;
     req.n.nlmsg_seq     = 60;
     req.n.nlmsg_pid     = getpid();
@@ -164,10 +158,10 @@ void set_nl_header(int command)
 
 int get_family_id()
 {
-    int id;
+    int id = 0;
     struct nlattr *na;
 
-    if (strlen(SR_GNL_FAMILY_NAME) > 16) {
+    if (strlen(TI_MFA_GNL_FAMILY_NAME) > 16) {
         printf("get_family_id - hostname too long.");
         exit(0);
     }
@@ -179,8 +173,8 @@ int get_family_id()
     req.g.version       = 0x1;
 
     na = (struct nlattr *) GENLMSG_DATA(&req);
-    set_nl_attr(na, CTRL_ATTR_FAMILY_NAME, SR_GNL_FAMILY_NAME,
-                strlen(SR_GNL_FAMILY_NAME));
+    set_nl_attr(na, CTRL_ATTR_FAMILY_NAME, TI_MFA_GNL_FAMILY_NAME,
+                strlen(TI_MFA_GNL_FAMILY_NAME));
 
     req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
 
@@ -194,11 +188,11 @@ int get_family_id()
         id = *(__u16 *) GENLMSG_NLA_DATA(na);
     }
 
-    srext_fam_id = id;
+    ti_mfa_fam_id = id;
     return 0;
 }
 
-int genl_client_init()
+static int genl_client_init()
 {
     reset_nl_attrs();
     create_nl_socket();
@@ -206,158 +200,91 @@ int genl_client_init()
     return 0;
 }
 
-void set_attributes()
+static void set_attributes()
 {
-    struct nlattr *na;
+    struct nlattr *na = (struct nlattr *) GENLMSG_DATA(&req);
 
-    if (params.table == NULL) {
-        printf("set_attributes: table is null.\n");
-        exit(0);
-    }
+    printf("setting attributes\n");
 
-    if (params.table != NULL) {
-        na = (struct nlattr *) GENLMSG_DATA(&req);
-        set_nl_attr(na, SR_A_TABLE, params.table, strlen(params.table));
+    if (params.link_source != NULL) {
+        set_nl_attr(na,  TI_MFA_A_LINK_SOURCE, params.link_source, sizeof(struct mac));
         req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
     }
 
-    if (params.sid != NULL) {
+    if (params.link_dest != NULL) {
         na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_SID, params.sid, strlen(params.sid));
+        set_nl_attr(na, TI_MFA_A_LINK_DEST, params.link_dest, sizeof(struct mac));
         req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
     }
 
-    if (params.func != NULL) {
+    if (params.dest != NULL) {
         na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_FUNC, params.func, strlen(params.func));
+        set_nl_attr(na, TI_MFA_A_BACKUP_LABEL, params.dest, sizeof(*params.dest));
         req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
     }
 
-    if (params.next != NULL) {
+    if (params.backup_dev_name != NULL) {
         na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_NEXT, params.next, strlen(params.next));
+        set_nl_attr(na, TI_MFA_A_BACKUP_DEV_NAME, params.backup_dev_name, strlen(params.backup_dev_name));
         req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
     }
-
-    if (params.mac != 0) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_MAC, params.mac, sizeof(struct sr_mac));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.oif != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_OIF, params.oif, strlen(params.oif));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.iif != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_IIF, params.iif, strlen(params.iif));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.source != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_SOURCE, params.source, strlen(params.source));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.addr != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_ADDR, params.addr, strlen(params.addr));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.segs != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_SEGS, params.segs, strlen(params.segs));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.sid_lst != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_SID_LST, params.sid_lst, strlen(params.sid_lst));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.left != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_LEFT, params.left, strlen(params.left));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.number != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_NUMBER, params.number, strlen(params.number));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
-    if (params.flags != NULL) {
-        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
-        set_nl_attr(na, SR_A_FLAGS, params.flags, strlen(params.flags));
-        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
-    }
-
 }
 
-int send_add_command()
+static int send_add_command()
 {
-    set_nl_header(SR_C_ADD);
+    set_nl_header(TI_MFA_C_ADD);
+    set_attributes();
+    printf("sending ADD\n");
+    if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
+    receive_response();
+    return 0;
+}
+
+static int send_del_command()
+{
+    set_nl_header(TI_MFA_C_DEL);
     set_attributes();
     if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
     receive_response();
     return 0;
 }
 
-int send_del_command()
+static int send_show_command()
 {
-    set_nl_header(SR_C_DEL);
+    set_nl_header(TI_MFA_C_SHOW);
+    set_attributes();
+    if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
+    printf("SHOW sent\n");
+    receive_response();
+    return 0;
+}
+
+static int send_flush_command()
+{
+    set_nl_header(TI_MFA_C_FLUSH);
     set_attributes();
     if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
     receive_response();
     return 0;
 }
 
-int send_show_command()
+static void print_mac(struct mac *mac, char *prefix)
 {
-    set_nl_header(SR_C_SHOW);
-    set_attributes();
-    if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
-    receive_response();
-    return 0;
+    if (!mac) {
+        printf("Ups\n");
+        return;
+    }
+    printf("%s: \t\t%02x:%02x:%02x:%02x:%02x:%02x\n",
+           prefix,
+           mac->oct[0],
+           mac->oct[1],
+           mac->oct[2],
+           mac->oct[3],
+           mac->oct[4],
+           mac->oct[5]);
 }
 
-int send_flush_command()
-{
-    set_nl_header(SR_C_FLUSH);
-    set_attributes();
-    if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
-    receive_response();
-    return 0;
-}
-
-int send_clear_command()
-{
-    set_nl_header(SR_C_CLEAR);
-    set_attributes();
-    if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
-    receive_response();
-    return 0;
-}
-
-void print_mac(struct sr_mac *mac)
-{
-    printf("Mac:\t\t%02x:%02x:%02x:%02x:%02x:%02x\n",
-           (unsigned char) mac->oct[0],
-           (unsigned char) mac->oct[1],
-           (unsigned char) mac->oct[2],
-           (unsigned char) mac->oct[3],
-           (unsigned char) mac->oct[4],
-           (unsigned char) mac->oct[5]);
-}
-
-int is_esadecimal(char c)
+static int is_esadecimal(char c)
 {
     int i, ret = 0;
     char numbers[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
@@ -382,7 +309,7 @@ end:
     return ret ;
 }
 
-int validate_mac_token(char *token)
+static int validate_mac_token(char *token)
 {
     int ret = -1;
     if (strlen(token) != 2)
@@ -400,14 +327,15 @@ end:
     return ret ;
 }
 
-int parse_mac(char *string)
+static struct mac *parse_mac(char *string)
 {
-    int index, ret = -1;
-    char *token;
+    int index;
+    char *token = "";
     char string_copy[strlen(string)];
     unsigned long N;
+    struct mac *addr;
 
-    params.mac = (struct sr_mac *) malloc(sizeof(struct sr_mac));
+    addr = malloc(sizeof(struct mac));
 
     strcpy(string_copy, string);
 
@@ -416,26 +344,75 @@ int parse_mac(char *string)
     while ( token != NULL ) {
         if (validate_mac_token(token) < 0) {
             printf("MAC address is not valid.\n");
-            goto end;
+            goto err;
         }
 
         N = strtoul(token, NULL, 16);
-        params.mac->oct[index] = N;
+        addr->oct[index] = N;
 
         token = strtok(NULL, ":");
         index++;
     }
     if (index != 6) {
         printf("MAC address is not valid.\n");
-        goto end;
+        goto err;
     }
 
-    ret = 0;
+    goto end;
+
+err:
+    free(addr);
+    return NULL;
 end:
+    return addr;
+}
+
+static int parse_link(char *string)
+{
+    const char *delimiter = "-";
+    int ret = -1;
+    char *token = NULL;
+    char string_copy[strlen(string)];
+    char *src_mac = NULL;
+    char *dst_mac = NULL;
+
+    strcpy(string_copy, string);
+
+    token = strtok(string_copy, delimiter);
+    if (!token)
+        goto end;
+
+    src_mac = malloc(strlen(token));
+    strcpy(src_mac, token);
+    printf("Src: %s\n", src_mac);
+
+    token = strtok(NULL, delimiter);
+    if (!token)
+        goto end;
+
+    dst_mac = malloc(strlen(token));
+    strcpy(dst_mac, token);
+    printf("Dst: %s\n", dst_mac);
+
+    params.link_source = parse_mac(src_mac);
+    if (params.link_source == NULL)
+        goto end;
+
+    params.link_dest = parse_mac(dst_mac);
+    if (params.link_dest == NULL)
+        goto end;
+
+    print_mac(params.link_dest, "Link dest");
+
+    ret = 0;
+
+end:
+    if (src_mac) free(src_mac);
+    if (dst_mac) free(dst_mac);
     return ret;
 }
 
-void print_command_line(int argc, char **argv)
+static void print_command_line(int argc, char **argv)
 {
     int i = 0;
     printf("-----------------------\n");
@@ -446,372 +423,54 @@ void print_command_line(int argc, char **argv)
     printf("-----------------------\n");
 }
 
-void print_parameters()
+static void print_parameters()
 {
     printf("\n--- Parsed parameters\n");
-    if (params.table   != NULL)  printf("Table:		%s\n", params.table);
-    if (params.command != NULL)  printf("Command:	%s\n", params.command);
-    if (params.sid     != NULL)  printf("Sid:		%s\n", params.sid);
-    if (params.func    != NULL)  printf("Func:		%s\n", params.func);
-    if (params.next    != NULL)  printf("next:		%s\n", params.next);
+    if (params.command         != NULL)  printf("Command:           %s\n", params.command);
+    if (params.link_source     != NULL)  print_mac(params.link_source, "link_source");
+    if (params.link_dest       != NULL)  print_mac(params.link_dest, "link_dest");
 
-    if (params.mac     != NULL)  print_mac(params.mac);
-
-    if (params.oif     != NULL)  printf("Oif:		%s\n", params.oif);
-    if (params.iif     != NULL)  printf("Iif:		%s\n", params.iif);
-
-    if (params.source  != NULL)  printf("Source:	%s\n", params.source);
-    if (params.addr    != NULL)  printf("Addr:		%s\n", params.addr);
-    if (params.segs    != NULL)  printf("Segs:		%s\n", params.segs);
-    if (params.sid_lst != NULL)  printf("Sid-lst:	%s\n", params.sid_lst);
-    if (params.left    != NULL)  printf("Left:		%s\n", params.left);
-    if (params.number  != NULL)  printf("Number:	%s\n", params.number);
-    if (params.flags   != NULL)  printf("Flags:		%s\n", params.flags);
+    if (params.dest            != NULL)  printf("Backup Label:      %u\n", (unsigned int) params.dest->label);
+    if (params.backup_dev_name != NULL)  printf("Backup net dev:    %s\n", params.backup_dev_name);
     printf("\n---------------------\n");
 }
 
 static int usage(void)
 {
-    fprintf(stderr,
-            "Usage: ti-mfa-conf TABLE { COMMAND | help} \n"
-            "TABLE := { localsid | srdev } \n");
+    fprintf(stderr, "Usage: ti-mfa-conf route { COMMAND | help} \n");
     return 0;
 }
 
-static int usage_localsid(void)
+static int parse_add_del_args(int argc, char **argv)
 {
-    fprintf(stderr,
-            "Usage: ti-mfa-conf { help | flush } \n"
-            "       ti-mfa-conf route add { show | clear-counters } [SID] \n"
-            "       ti-mfa-conf localsid del SID \n"
-            "       ti-mfa-conf localsid add SID BEHAVIOUR \n"
-            "BEHAVIOUR:= { end | \n"
-            "              end.dx2 TARGETIF | \n"
-            "              end.dx4 NEXTHOP4 TARGETIF | \n"
-            "              { end.x | end.dx6 } NEXTHOP6 TARGETIF | \n"
-            "              { end.ad4 | end.ead4 } NEXTHOP4 TARGETIF SOURCEIF | \n"
-            "              { end.am | end.ad6 | end.ead6 } NEXTHOP6 TARGETIF SOURCEIF | \n"
-            "              end.as4 NEXTHOP4 TARGETIF SOURCEIF src ADDR segs SIDLIST left SEGMENTLEFT }\n"
-            "              end.as6 NEXTHOP6 TARGETIF SOURCEIF src ADDR segs SIDLIST left SEGMENTLEFT |\n"
-            "NEXTHOP4:= { ip IPv4-ADDR | mac MAC-ADDR }\n"
-            "NEXTHOP6:= { ip IPv6-ADDR | mac MAC-ADDR }\n");
-    return 0;
-}
+    int ret = -1, if_len = 0;
+    unsigned int mpls_label;
 
-static int usage_srdev(void)
-{
-    fprintf(stderr,
-            "Usage: ti-mfa-conf srdev { help | flush } \n\n" );
-    return 0;
-}
-
-/**
- * add_end(): used by ti-mfa-conf to add a new SID with End behavior
- * End behavior doesn't require any arguments
-*/
-
-int add_end(int argc, char **argv)
-{
-    int ret = -1;
-    if (argc > 5) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
-        goto end;
-    }
-
-    ret = send_add_command();
-
-end:
-    return ret;
-}
-
-/**
- * add_end_dx2(): used by ti-mfa-conf to add a new SID with End.DX2 behavior
- * End.DX2 behavior requires a target interface as an argument
-*/
-
-int add_end_dx2(int argc, char **argv)
-{
-    int ret = -1;
-    if (argc > 6) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
-        goto end;
-    }
-
-    if (argc < 6) {
+    if (argc < 5 ) {
         printf("Command line is not complete.\n");
         goto end;
     }
 
-    if (if_nametoindex(argv[5]) == 0) {
-        printf("Error: interface \"%s\" doesn't exist .\n", argv[5]);
+    if (parse_link(argv[2]) != 0) {
+        printf("Error: a link in the format of {mac}-{mac} is expected rather than \"%s\".\n", argv[2]);
         goto end;
     }
 
-    params.oif = argv[5];
-    ret = send_add_command();
+    mpls_label = strtoul(argv[3], NULL, 10);
+    if (mpls_label == EINVAL || mpls_label == ERANGE) {
+        printf("Error: MPLS label is invalid: \"%s\"\n", argv[4]);
+        goto end;
+    }
+    params.dest = malloc(sizeof(*params.dest));
+    params.dest->label = mpls_label;
 
+    if_len = strlen(argv[4]);
+    params.backup_dev_name = malloc(if_len);
+    memmove(params.backup_dev_name, argv[4], if_len);
+
+    ret = 0;
 end:
     return ret;
-}
-
-/**
- * add_end_dx4(): used by ti-mfa-conf to add a new SID with End.DX4 behavior
- * End.DX4 behavior requires an IPv4 address of the next_hop and a target
-   interface as arguments
-*/
-
-int add_end_dx4(int argc, char **argv)
-{
-    int ret = -1 ;
-    struct in_addr next_hop;
-
-    if (argc > 8) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
-        goto end;
-    }
-
-    if (argc < 8) {
-        printf("Command line is not complete.\n");
-        goto end;
-    }
-
-    if (strcmp(argv[5], "ip") != 0 && strcmp(argv[5], "mac") != 0  ) {
-        printf(" invalid token \"%s\"\n", argv[5]);
-        goto end;
-    }
-
-    if (if_nametoindex(argv[7]) == 0) {
-        printf("Error: interface \"%s\" doesn't exist .\n", argv[7]);
-        goto end;
-    }
-
-    params.oif = argv[7];
-
-    if ( strcmp(argv[5], "mac") == 0) {
-        ret = parse_mac(argv[6]);
-        if (!ret)
-            goto send_add;
-
-        goto end;
-    }
-
-    if (inet_pton(AF_INET, argv[6], &next_hop) != 1) {
-        printf("Error: inet prefix is expected rather than \"%s\".\n", argv[6]);
-        goto end;
-    }
-
-    params.next = argv[6];
-
-send_add:
-    ret = send_add_command();
-
-end:
-    return ret;
-}
-
-/**
- * add_end_x(): used by ti-mfa-conf to add a new SID with End.X behavior
- * End.X behavior requires as arguments:
-   - IPv6 address of the next_hop
-   - Target interfac
- * used also for END.DX6 behavior
- */
-
-int add_end_x(int argc, char **argv)
-{
-    int ret = -1;
-    struct in6_addr next_hop;
-
-    if (argc > 8) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
-        goto end;
-    }
-
-    if (argc < 8) {
-        printf("Command line is not complete.\n");
-        goto end;
-    }
-
-    if (strcmp(argv[5], "ip") != 0 && strcmp(argv[5], "mac") != 0  ) {
-        printf(" invalid token \"%s\"\n", argv[5]);
-        goto end;
-    }
-
-    if (if_nametoindex(argv[7]) == 0) {
-        printf("Error: interface \"%s\" doesn't exist .\n", argv[7]);
-        goto end;
-    }
-
-    params.oif = argv[7];
-
-    if ( strcmp(argv[5], "mac") == 0) {
-        ret = parse_mac(argv[6]);
-        if (!ret)
-            goto send_add;
-
-        goto end;
-    }
-
-    if (inet_pton(AF_INET6, argv[6], &next_hop) != 1) {
-        printf("Error: inet6 prefix is expected rather than \"%s\".\n", argv[6]);
-        goto end;
-    }
-
-    params.next = argv[6];
-
-send_add:
-    ret = send_add_command();
-
-end:
-    return ret ;
-}
-
-/**
- * add_end_ad6(): used by ti-mfa-conf to add a new SID with End.AD6 behavior
- * End.AD6 behavior requires as arguments:
-   - IPv6 address of the next_hop
-   - Target interfac
-   - Source interfac
- * The next hop can be mac address of the VNF
- * used also for END.AM and End.EAD6 behaviors
- */
-
-int add_end_ad6(int argc, char **argv)
-{
-    int ret = -1;
-    struct in6_addr next_hop;
-
-    if (argc > 9) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
-        goto end;
-    }
-
-    if (argc < 9) {
-        printf("Command line is not complete.\n");
-        goto end;
-    }
-
-    if (strcmp(argv[5], "ip") != 0 && strcmp(argv[5], "mac") != 0  ) {
-        printf(" invalid token \"%s\"\n", argv[5]);
-        goto end;
-    }
-
-    if (if_nametoindex(argv[7]) == 0) {
-        printf("Error: interface \"%s\" doesn't exist .\n", argv[7]);
-        goto end;
-    }
-
-    params.oif = argv[7];
-
-    if (if_nametoindex(argv[8]) == 0) {
-        printf("Error: interface \"%s\" doesn't exist .\n", argv[8]);
-        goto end;
-    }
-
-    params.iif = argv[8];
-
-    if ( strcmp(argv[5], "mac") == 0) {
-        ret = parse_mac(argv[6]);
-        if (!ret)
-            goto send_add;
-
-        goto end;
-    }
-
-    if (inet_pton(AF_INET6, argv[6], &next_hop) != 1) {
-        printf("Error: inet6 prefix is expected rather than \"%s\".\n", argv[6]);
-        goto end;
-    }
-
-    params.next = argv[6];
-
-send_add:
-    ret = send_add_command();
-
-end:
-    return ret;
-}
-
-/**
- * add_end_ad4(): used by ti-mfa-conf to add a new SID with End.AD4 behavior
- * End.AD4 behavior requires as arguments:
-   - IPv4 address of the next_hop
-   - Target interfac
-   - Source interfac
- * The next hop can be mac address of the VNF
- * used also for End.EAD4 behavior
- */
-
-int add_end_ad4(int argc, char **argv)
-{
-    int ret = -1;
-    struct in_addr next_hop;
-
-    if (argc > 9) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
-        goto end;
-    }
-
-    if (argc < 9) {
-        printf("Command line is not complete.\n");
-        goto end;
-    }
-
-    if (strcmp(argv[5], "ip") != 0 && strcmp(argv[5], "mac") != 0  ) {
-        printf(" invalid token \"%s\"\n", argv[5]);
-        goto end;
-    }
-
-    if (if_nametoindex(argv[7]) == 0) {
-        printf("Error: interface \"%s\" doesn't exist .\n", argv[7]);
-        goto end;
-    }
-
-    params.oif = argv[7];
-
-    if (if_nametoindex(argv[8]) == 0) {
-        printf("Error: interface \"%s\" doesn't exist .\n", argv[8]);
-        goto end;
-    }
-
-    params.iif = argv[8];
-
-    if ( strcmp(argv[5], "mac") == 0) {
-        ret = parse_mac(argv[6]);
-        if (!ret)
-            goto send_add;
-
-        goto end;
-    }
-
-    if (inet_pton(AF_INET, argv[6], &next_hop) != 1) {
-        printf("Error: inet prefix is expected rather than \"%s\".\n", argv[6]);
-        goto end;
-    }
-
-    params.next = argv[6];
-
-send_add:
-    ret = send_add_command();
-
-end:
-    return ret;
-}
-
-/**
- * END.AS4 and End.AS6 behaviors are not supported in the current implementation
-*/
-
-int add_end_as6(int argc, char **argv)
-{
-    printf("The behaviour  %s is not supported yet. \n" , argv[4] );
-    return 0 ;
-}
-
-int add_end_as4(int argc, char **argv)
-{
-    printf("The behaviour  %s is not supported yet. \n" , argv[4] );
-    return 0;
 }
 
 /**
@@ -819,53 +478,14 @@ int add_end_as4(int argc, char **argv)
  * Based on the behavior a different call is invoked
 */
 
-int do_add(int argc, char **argv)
+static int do_add(int argc, char **argv)
 {
     int ret = -1;
-    struct in6_addr sid;
 
-    if (argc < 5 ) {
-        printf("Command line is not complete.\n");
+    if (parse_add_del_args(argc, argv) != 0)
         goto end;
-    }
 
-    if (inet_pton(AF_INET6, argv[3], &sid) != 1) {
-        printf("Error: inet6 prefix is expected rather than \"%s\".\n", argv[3]);
-        goto end;
-    }
-
-    params.sid  = argv[3];
-    params.func = argv[4];
-
-    if (strcmp(argv[4], END) == 0)
-        ret =  add_end(argc, argv);
-
-    else if (strcmp(argv[4], END_DX2) == 0)
-        ret = add_end_dx2(argc, argv);
-
-    else if ((strcmp(argv[4], END_X) == 0) || (strcmp(argv[4], END_DX6) == 0))
-        ret = add_end_x(argc, argv);
-
-    else if (strcmp(argv[4], END_DX4) == 0)
-        ret = add_end_dx4(argc, argv);
-
-    else if ((strcmp(argv[4], END_AD4) == 0) || (strcmp(argv[4], END_EAD4) == 0))
-        ret = add_end_ad4(argc, argv);
-
-    else if ((strcmp(argv[4], END_AM) == 0) || (strcmp(argv[4], END_AD6) == 0) ||
-             (strcmp(argv[4], END_EAD6) == 0) )
-        ret = add_end_ad6(argc, argv);
-
-    else if (strcmp(argv[4], END_AS4) == 0)
-        ret = add_end_as4(argc, argv);
-
-    else if (strcmp(argv[4], END_AS6) == 0)
-        ret = add_end_as6(argc, argv);
-
-
-    else
-        printf("SRv6 behavior \"%s\" is not supported\n" , argv[4] );
-
+    ret = send_add_command();
 end:
     return ret;
 }
@@ -874,105 +494,39 @@ end:
  * do_del(): handles "ti-mfa-conf localsid del SID " command
 */
 
-int do_del(int argc, char **argv)
+static int do_del(int argc, char **argv)
 {
     int ret = -1;
-    struct in6_addr sid;
 
-    if (argc < 4 ) {
-        printf("Command line is not complete.\n");
+    if (parse_add_del_args(argc, argv) != 0)
         goto end;
-    }
 
-    if (argc > 4) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
-        goto end;
-    }
-
-    if (inet_pton(AF_INET6, argv[3], &sid) != 1) {
-        printf("Error: inet6 prefix is expected rather than \"%s\".\n", argv[3]);
-        goto end;
-    }
-
-    params.sid  = argv[3];
     ret = send_del_command();
-
 end:
     return ret;
 }
 
-/**
- * do_clear(): handles "ti-mfa-conf localsid clear-counters [SID] " command
-*/
-
-int do_clear(int argc, char **argv)
-{
-    int ret = -1;
-    struct in6_addr sid;
-
-    if (argc > 4) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
-        goto end;
-    }
-
-    if (argc == 3)
-        goto send_clear;
-
-    if ( inet_pton(AF_INET6, argv[3], &sid) != 1 ) {
-        printf("Error: inet6 prefix is expected rather than \"%s\".\n", argv[3]);
-        goto end;
-    }
-
-    params.sid = argv[3];
-
-send_clear:
-    ret = send_clear_command();
-
-end:
-    return ret ;
-}
-
-/**
- * do_show(): handles "ti-mfa-conf localsid show [SID] " command
-*/
-
-int do_show(int argc, char **argv)
+static int do_show(int argc, char **argv)
 {
     int ret = -1 ;
-    struct in6_addr sid;
 
-    if (argc > 4) {
+    if (argc > 2) {
         printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
         goto end;
     }
 
-    if (argc == 3)
-        goto send_show;
-
-    if (inet_pton(AF_INET6, argv[3], &sid) != 1) {
-        printf("Error: inet6 prefix is expected rather than \"%s\".\n", argv[3]);
-        goto end;
-    }
-
-    params.sid = argv[3];
-
-send_show:
     ret = send_show_command();
 
 end:
     return ret;
 }
 
-/**
- * do_flush(): handles "ti-mfa-conf localsid flush " command
-*/
-
-int do_flush(int argc, char **argv)
+static int do_flush(int argc, char **argv)
 {
     int ret = -1;
 
-    if (argc > 3) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
+    if (argc > 2) {
+        printf("Too many parameters. Please try \"ti-mfa-conf help\" \n");
         goto end;
     }
 
@@ -983,19 +537,19 @@ end:
 }
 
 /**
- * do_help(): handles "ti-mfa-conf localsid help " command
+ * do_help(): handles "ti-mfa-conf help " command
 */
 
-int do_help(int argc, char **argv)
+static int do_help(int argc, char **argv)
 {
     int ret = -1;
 
-    if (argc > 3) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
+    if (argc > 2) {
+        printf("Too many parameters. Please try \"ti-mfa-conf help\" \n");
         goto end;
     }
 
-    ret = usage_localsid();
+    ret = 0;
 
 end:
     return ret ;
@@ -1017,52 +571,32 @@ int main(int argc, char **argv)
         goto end;
     }
 
-    if (strcmp(argv[1], HELP) == 0 ) {
+    if (strcmp(argv[1], HELP) == 0) {
         ret = usage();
         goto end;
     }
 
-    if ((strcmp(argv[1], LOCALSID) != 0) && (strcmp(argv[1], SRDEV) != 0) ) {
-        printf("Unrecognized table. Please try \"ti-mfa-conf help\". \n");
-        goto end;
-    }
+    params.command = argv[1];
 
-    params.table = argv[1];
+    if (strcmp(params.command, HELP) == 0)
+        ret = do_help(argc, argv);
 
-    if (strcmp(argv[1], LOCALSID) == 0) {
+    else if (strcmp(params.command, FLUSH) == 0)
+        ret = do_flush(argc, argv);
 
-        if (argc == 2) {
-            ret = usage_localsid();
-            goto end;
-        }
+    else if (strcmp(params.command, SHOW) == 0)
+        ret = do_show(argc, argv);
 
-        params.command = argv[2];
+    else if (strcmp(params.command, DEL) == 0)
+        ret = do_del(argc, argv);
 
-        if (strcmp(argv[2], HELP) == 0)
-            ret = do_help(argc, argv);
+    else if (strcmp(params.command, ADD) == 0)
+        ret = do_add(argc, argv);
 
-        else if (strcmp(argv[2], FLUSH) == 0)
-            ret = do_flush(argc, argv);
+    else
+        printf("Unrecognized command. Please try \"ti-mfa-conf help\".\n");
 
-        else if (strcmp(argv[2], CLEAR) == 0)
-            ret = do_clear(argc, argv);
-
-        else if (strcmp(argv[2], SHOW) == 0)
-            ret = do_show(argc, argv);
-
-        else if (strcmp(argv[2], DEL) == 0)
-            ret = do_del(argc, argv);
-
-        else if (strcmp(argv[2], ADD) == 0)
-            ret = do_add(argc, argv);
-
-        else
-            printf("Unrecognized command. Please try \"ti-mfa-conf localsid help\".\n");
-    }
-    else {
-        printf("ti-mfa-conf srdev commands are not supported yet. \n");
-        usage_srdev();
-    }
+    print_parameters();
 
 end:
     return ret;

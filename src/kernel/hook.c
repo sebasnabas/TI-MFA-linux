@@ -14,6 +14,7 @@
 #include <net/protocol.h>
 #include <net/sock.h>
 
+#include "../include/ti_mfa_genl.h"
 #include "../include/mpls.h"
 #include "../include/ti_mfa_algo.h"
 #include "../include/utils.h"
@@ -179,12 +180,21 @@ static int __init timfa_init(void)
     if (err != 0)
         goto out_unregister;
 
+    err = ti_mfa_genl_register();
+    if (err != 0) {
+        goto out_genl_unregister;
+    }
+
     err = register_netdevice_notifier(&ti_mfa_dev_notifier);
     if (err != 0)
-        goto out_cleanup;
+        goto out_genl_unregister;
 
 out:
     return err;
+
+out_genl_unregister:
+    ti_mfa_genl_unregister();
+    goto out_cleanup;
 
 out_cleanup:
     cleanup_ti_mfa();
@@ -192,7 +202,8 @@ out_cleanup:
 
 out_unregister:
     unregister_hooks();
-    goto out_cleanup;
+    goto out;
+
 }
 
 static void __exit timfa_exit(void)
@@ -201,6 +212,7 @@ static void __exit timfa_exit(void)
 
     unregister_netdevice_notifier(&ti_mfa_dev_notifier);
     cleanup_ti_mfa();
+    ti_mfa_genl_unregister();
     unregister_hooks();
     kfree(timfa_hooks);
 
