@@ -6,6 +6,7 @@
 #include <linux/hashtable.h>
 #include <linux/hash.h>
 #include <linux/kernel.h>
+#include <linux/netdevice.h>
 #include <linux/rwlock.h>
 #include <linux/slab.h>
 
@@ -22,16 +23,15 @@ u32 rt_hash(struct ti_mfa_route rt)
     unsigned char *key_to_hash;
     int key_length = 0;
 
-    key_length += ETH_ALEN * 2 + IFNAMSIZ;
-    key_length += sizeof(rt.destination_label);
+    key_length += ETH_ALEN * 2;
 
     key_to_hash = kcalloc(sizeof(char), key_length, GFP_KERNEL);
 
-    ether_addr_copy(&key_to_hash[0], rt.link_dest);
-    ether_addr_copy(&key_to_hash[ETH_ALEN], rt.link_source);
-    memmove(&key_to_hash[ETH_ALEN * 2], rt.out_dev_name, IFNAMSIZ);
-    memmove(&key_to_hash[key_length - sizeof(rt.destination_label)], &(rt.destination_label),
-            sizeof(rt.destination_label));
+    ether_addr_copy(&key_to_hash[0], rt.link.dest);
+    ether_addr_copy(&key_to_hash[ETH_ALEN], rt.link.source);
+    /* memmove(&key_to_hash[ETH_ALEN * 2], rt.out_dev_name, IFNAMSIZ); */
+    /* memmove(&key_to_hash[key_length - sizeof(rt.destination_label)], &(rt.destination_label), */
+    /*         sizeof(rt.destination_label)); */
 
     return jhash(key_to_hash, key_length, 0);
 }
@@ -42,8 +42,8 @@ struct ti_mfa_route *rt_lookup(struct ti_mfa_route rt)
     u32 key = rt_hash(rt);
      hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
         if (strcmp(found_rt->out_dev_name, rt.out_dev_name) == 0
-                && ether_addr_equal(found_rt->link_source, rt.link_source)
-                && ether_addr_equal(found_rt->link_dest, rt.link_dest)
+                && ether_addr_equal(found_rt->link.source, rt.link.source)
+                && ether_addr_equal(found_rt->link.dest, rt.link.dest)
                 && found_rt->destination_label == rt.destination_label) {
             return found_rt;
         }
@@ -69,10 +69,7 @@ int rt_add(struct ti_mfa_route new_route)
         goto end;
     }
 
-    ether_addr_copy(rt->link_source, new_route.link_source);
-    ether_addr_copy(rt->link_dest, new_route.link_dest);
-    memmove(rt->out_dev_name, new_route.out_dev_name, IFNAMSIZ);
-    rt->destination_label = new_route.destination_label;
+    *rt = new_route;
 
     hash_key = rt_hash(new_route);
     write_lock_bh(&ti_mfa_rwlock);
@@ -90,7 +87,7 @@ int rt_del(struct ti_mfa_route rt)
 {
     int ret = -1;
     u32 key;
-    struct ti_mfa_route *found_rt;
+    struct ti_mfa_route *found_rt = NULL;
 
     if (hash_empty(backup_route_table)) {
         pr_debug("Routing table is empty\n");
@@ -100,15 +97,17 @@ int rt_del(struct ti_mfa_route rt)
     key = rt_hash(rt);
     hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
         if (strcmp(found_rt->out_dev_name, rt.out_dev_name) == 0
-                && ether_addr_equal(found_rt->link_source, rt.link_source)
-                && ether_addr_equal(found_rt->link_dest, rt.link_dest)
+                && ether_addr_equal(found_rt->link.source, rt.link.source)
+                && ether_addr_equal(found_rt->link.dest, rt.link.dest)
                 && found_rt->destination_label == rt.destination_label) {
 
             pr_debug("Deleting route for %u\n", found_rt->destination_label);
             hash_del_rcu(&found_rt->hnode);
-            kfree(found_rt);
-            ret = 3;
-        }
+
+            /* TODO: Figure out how to avoid freeze on free <19-04-22> */
+            /* kfree(found_rt); */
+            ret = 0;
+       }
     }
 
 end:
@@ -131,9 +130,10 @@ int rt_show(char *dst, size_t size)
     rcu_read_lock();
     hash_for_each_rcu(backup_route_table, i, rt, hnode) {
         sprintf(dst + strlen(dst), "\tDestination: %u\n", rt->destination_label);
-        sprintf(dst + strlen(dst), "\tLink Source: %pM\n", rt->link_source);
-        sprintf(dst + strlen(dst), "\tLink Dest:   %pM\n", rt->link_dest);
+        sprintf(dst + strlen(dst), "\tLink Source: %pM\n", rt->link.source);
+        sprintf(dst + strlen(dst), "\tLink Dest:   %pM\n", rt->link.dest);
         sprintf(dst + strlen(dst), "\tOut dev:     %s\n", rt->out_dev_name);
+        pr_debug("\tOut dev:     %s\n", rt->out_dev_name);
 
         sprintf(dst + strlen(dst), "------------------\n");
     }

@@ -204,8 +204,6 @@ static void set_attributes()
 {
     struct nlattr *na = (struct nlattr *) GENLMSG_DATA(&req);
 
-    printf("setting attributes\n");
-
     if (params.link_source != NULL) {
         set_nl_attr(na,  TI_MFA_A_LINK_SOURCE, params.link_source, sizeof(struct mac));
         req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
@@ -234,7 +232,6 @@ static int send_add_command()
 {
     set_nl_header(TI_MFA_C_ADD);
     set_attributes();
-    printf("sending ADD\n");
     if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
     receive_response();
     return 0;
@@ -254,7 +251,6 @@ static int send_show_command()
     set_nl_header(TI_MFA_C_SHOW);
     set_attributes();
     if (sendto_fd(sd, (char *) &req, req.n.nlmsg_len) < 0) return -1;
-    printf("SHOW sent\n");
     receive_response();
     return 0;
 }
@@ -384,7 +380,6 @@ static int parse_link(char *string)
 
     src_mac = malloc(strlen(token));
     strcpy(src_mac, token);
-    printf("Src: %s\n", src_mac);
 
     token = strtok(NULL, delimiter);
     if (!token)
@@ -392,7 +387,6 @@ static int parse_link(char *string)
 
     dst_mac = malloc(strlen(token));
     strcpy(dst_mac, token);
-    printf("Dst: %s\n", dst_mac);
 
     params.link_source = parse_mac(src_mac);
     if (params.link_source == NULL)
@@ -401,8 +395,6 @@ static int parse_link(char *string)
     params.link_dest = parse_mac(dst_mac);
     if (params.link_dest == NULL)
         goto end;
-
-    print_mac(params.link_dest, "Link dest");
 
     ret = 0;
 
@@ -425,14 +417,14 @@ static void print_command_line(int argc, char **argv)
 
 static void print_parameters()
 {
-    printf("\n--- Parsed parameters\n");
+    printf("--- Parsed parameters\n");
     if (params.command         != NULL)  printf("Command:           %s\n", params.command);
     if (params.link_source     != NULL)  print_mac(params.link_source, "link_source");
     if (params.link_dest       != NULL)  print_mac(params.link_dest, "link_dest");
 
     if (params.dest            != NULL)  printf("Backup Label:      %u\n", (unsigned int) params.dest->label);
     if (params.backup_dev_name != NULL)  printf("Backup net dev:    %s\n", params.backup_dev_name);
-    printf("\n---------------------\n");
+    printf("---------------------\n");
 }
 
 static int usage(void)
@@ -465,7 +457,7 @@ static int parse_add_del_args(int argc, char **argv)
     params.dest->label = mpls_label;
 
     if_len = strlen(argv[4]);
-    params.backup_dev_name = malloc(if_len);
+    params.backup_dev_name = calloc(sizeof(char), if_len);
     memmove(params.backup_dev_name, argv[4], if_len);
 
     ret = 0;

@@ -59,8 +59,10 @@ static void *extract_nl_attr(const struct genl_info *info, const int atype)
     return data;
 }
 
-static void extract_sr_attrs(const struct genl_info *info, struct ti_mfa_param *a)
+static void extract_ti_mfa_attrs(const struct genl_info *info, struct ti_mfa_param *a)
 {
+    char *tmp = NULL;
+
     a->command         = (char *) extract_nl_attr(info, TI_MFA_A_COMMAND);
     a->link_source     = (struct mac *) extract_nl_attr(info, TI_MFA_A_LINK_SOURCE);
     a->link_dest       = (struct mac *) extract_nl_attr(info, TI_MFA_A_LINK_DEST);
@@ -123,11 +125,11 @@ static int add_backup_route(struct ti_mfa_param attr, struct genl_info *info)
             && attr.dest != NULL && attr.backup_dev_name != NULL) {
         struct ti_mfa_route rt = {
             .destination_label = attr.dest->label,
-            .out_dev_name      = NULL
         };
 
-        ether_addr_copy(rt.link_source, attr.link_source->oct);
-        ether_addr_copy(rt.link_dest, attr.link_dest->oct);
+        ether_addr_copy(rt.link.source, attr.link_source->oct);
+        ether_addr_copy(rt.link.dest, attr.link_dest->oct);
+        strcpy(rt.out_dev_name, attr.backup_dev_name);
 
         ret = rt_add(rt);
     }
@@ -146,7 +148,7 @@ static int ti_mfa_genl_add(struct sk_buff *skb, struct genl_info *info)
     int ret = 0;
     struct ti_mfa_param attr;
     struct genl_msg_data data[1];
-    extract_sr_attrs(info, &attr);
+    extract_ti_mfa_attrs(info, &attr);
     print_attributes(&attr);
 
     return add_backup_route(attr, info);
@@ -160,11 +162,11 @@ static int del_backup_route(struct ti_mfa_param attr, struct genl_info *info)
             && attr.dest != NULL && attr.backup_dev_name != NULL) {
         struct ti_mfa_route rt = {
             .destination_label = attr.dest->label,
-            .out_dev_name      = NULL
         };
 
-        ether_addr_copy(rt.link_source, attr.link_source->oct);
-        ether_addr_copy(rt.link_dest, attr.link_dest->oct);
+        ether_addr_copy(rt.link.source, attr.link_source->oct);
+        ether_addr_copy(rt.link.dest, attr.link_dest->oct);
+        strcpy(rt.out_dev_name, attr.backup_dev_name);
 
         ret = rt_del(rt);
     }
@@ -219,7 +221,7 @@ static int ti_mfa_genl_del(struct sk_buff *skb, struct genl_info *info)
     int ret = 0;
     struct ti_mfa_param attr;
     struct genl_msg_data data[1];
-    extract_sr_attrs(info, &attr);
+    extract_ti_mfa_attrs(info, &attr);
     print_attributes(&attr);
 
     return del_backup_route(attr, info);
@@ -233,7 +235,7 @@ static int ti_mfa_genl_show(struct sk_buff *skb, struct genl_info *info)
     int ret = 0;
     struct ti_mfa_param attr;
     struct genl_msg_data data[1];
-    extract_sr_attrs(info, &attr);
+    extract_ti_mfa_attrs(info, &attr);
     print_attributes(&attr);
 
     pr_debug("Got SHOW\n");
@@ -253,7 +255,7 @@ static int ti_mfa_genl_flush(struct sk_buff * skb, struct genl_info * info)
     int ret = 0;
     struct ti_mfa_param attr;
     /* struct genl_msg_data data[1]; */
-    extract_sr_attrs(info, &attr);
+    extract_ti_mfa_attrs(info, &attr);
     print_attributes(&attr);
 
     return flush_routes(attr, info);
