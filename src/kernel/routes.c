@@ -48,13 +48,24 @@ static u32 rt_hash(struct ti_mfa_link link)
     return jhash(key_to_hash, key_length, 0);
 }
 
+bool links_equal(struct ti_mfa_link one, struct ti_mfa_link other)
+{
+    bool equal = false;
+    pr_debug("Comparing links: %pM-%pM & %pM-%pM\n", one.source, one.dest, other.source, other.dest);
+    equal = ether_addr_equal(one.source, other.dest)
+        || ether_addr_equal(one.dest, other.dest)
+        || ether_addr_equal(one.source, other.source);
+
+    return equal;
+}
+
 struct ti_mfa_route *rt_lookup(struct ti_mfa_route rt)
 {
     struct ti_mfa_route *found_rt;
     u32 key = rt_hash(rt.link);
     hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
         if (strcmp(found_rt->out_dev_name, rt.out_dev_name) == 0
-                && rt_link_equal(found_rt->link, rt.link)
+                && links_equal(found_rt->link, rt.link)
                 && found_rt->destination_label == rt.destination_label) {
             return found_rt;
         }
@@ -108,7 +119,7 @@ int rt_del(struct ti_mfa_route rt)
     key = rt_hash(rt.link);
     hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
         if (strcmp(found_rt->out_dev_name, rt.out_dev_name) == 0
-                && rt_link_equal(found_rt->link, rt.link)
+                && links_equal(found_rt->link, rt.link)
                 && found_rt->destination_label == rt.destination_label) {
 
             pr_debug("Deleting route for %u\n", found_rt->destination_label);

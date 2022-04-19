@@ -16,6 +16,7 @@
 #include <net/mpls.h>
 
 #include "../include/mpls.h"
+#include  "../include/routes.h"
 #include "../include/ti_mfa_algo.h"
 #include "../include/utils.h"
 
@@ -149,13 +150,16 @@ static int get_shortest_path(struct net *net, const u32 destination,
     return error;
 }
 
-static void set_local_link_failures(struct net *net, u32 destination, struct ti_mfa_nh *next_hop)
+static void set_local_link_failures(struct net *net,
+        const struct ti_mfa_shim_hdr existing_link_failures[], const uint link_failure_count,
+        u32 destination, struct ti_mfa_nh *next_hop)
 {
     uint i = 0, link_failures = 0;
     for (i = 0; i < number_of_deleted_neighs; i++) {
         struct ti_mfa_neigh *neigh = deleted_neighs[i];
         uint j = 0;
         bool label_found = false;
+        bool link_failure_found = false;
 
         if (!neigh || neigh->net != net)
             continue;
@@ -169,6 +173,22 @@ static void set_local_link_failures(struct net *net, u32 destination, struct ti_
         }
 
         if (!label_found)
+            continue;
+
+        /* Don't add an already existing link failure */
+        for (j = 0;  j < link_failure_count; j++) {
+            struct ti_mfa_link exisiting_link = ti_mfa_hdr_to_link(existing_link_failures[j]);
+            struct ti_mfa_link neigh_link;
+            ether_addr_copy(neigh_link.source, neigh->dev->dev_addr);
+            ether_addr_copy(neigh_link.dest, neigh->ha);
+
+            if (links_equal(exisiting_link, neigh_link)) {
+                link_failure_found = true;
+                break;
+            }
+        }
+
+        if (link_failure_found)
             continue;
 
         ether_addr_copy(next_hop->link_failures[link_failures].link_source, neigh->dev->dev_addr);
@@ -416,7 +436,7 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
         goto out_error;
 
-    set_local_link_failures(net, destination.label, &next_hop);
+    set_local_link_failures(net, link_failures, link_failure_count, destination.label, &next_hop);
 
     if (next_hop.link_failure_count > 0) {
         pr_debug("Found local link failures -> Not doing PHP\n");

@@ -1,9 +1,11 @@
 #ifndef TI_MFA_ALGO_H
 #define TI_MFA_ALGO_H
 
+#include <linux/etherdevice.h>
 #include <linux/kernel.h>
 #include <linux/skbuff.h>
 #include "mpls.h"
+#include "routes.h"
 
 /* run_ti_mfa() success codes */
 #define TI_MFA_SUCCESS  0x00
@@ -50,6 +52,14 @@ void cleanup_ti_mfa(void);
 static inline struct ti_mfa_shim_hdr *ti_mfa_hdr(const struct sk_buff *skb)
 {
     return (struct ti_mfa_shim_hdr *)skb_network_header(skb);
+}
+
+static inline struct ti_mfa_link ti_mfa_hdr_to_link(const struct ti_mfa_shim_hdr hdr)
+{
+    struct ti_mfa_link link;
+    ether_addr_copy(link.source, hdr.link_source);
+    ether_addr_copy(link.dest, hdr.link_dest);
+    return link;
 }
 
 #endif // TI_MFA_ALGO_H
