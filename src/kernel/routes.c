@@ -3,8 +3,8 @@
 #include <linux/if.h>
 #include <linux/etherdevice.h>
 #include <linux/jhash.h>
-#include <linux/hashtable.h>
 #include <linux/hash.h>
+#include <linux/hashtable.h>
 #include <linux/kernel.h>
 #include <linux/netdevice.h>
 #include <linux/rwlock.h>
@@ -12,24 +12,10 @@
 
 #include "../include/routes.h"
 
-#define TABLE_SIZE 5  // 5 bits = 32 entries
-
-static DEFINE_HASHTABLE(backup_route_table, TABLE_SIZE);    /* backup routes table */
 
 rwlock_t ti_mfa_rwlock;
 
-static bool rt_link_equal(struct ti_mfa_link one, struct ti_mfa_link other)
-{
-    bool equal = false;
-    pr_debug("Comparing links: %pM-%pM & %pM-%pM\n", one.source, one.dest, other.source, other.dest);
-    equal = ether_addr_equal(one.source, other.dest)
-        || ether_addr_equal(one.dest, other.dest)
-        || ether_addr_equal(one.source, other.source);
-
-    return equal;
-}
-
-static u32 rt_hash(struct ti_mfa_link link)
+u32 rt_hash(struct ti_mfa_link link)
 {
     unsigned char *key_to_hash;
     int key_length = 0;
