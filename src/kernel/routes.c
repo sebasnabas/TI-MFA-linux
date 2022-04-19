@@ -18,20 +18,32 @@ static DEFINE_HASHTABLE(backup_route_table, TABLE_SIZE);    /* backup routes tab
 
 rwlock_t ti_mfa_rwlock;
 
-u32 rt_hash(struct ti_mfa_route rt)
+static bool rt_link_equal(struct ti_mfa_link one, struct ti_mfa_link other)
+{
+    bool equal = false;
+    pr_debug("Comparing links: %pM-%pM & %pM-%pM\n", one.source, one.dest, other.source, other.dest);
+    equal = ether_addr_equal(one.source, other.dest)
+        || ether_addr_equal(one.dest, other.dest)
+        || ether_addr_equal(one.source, other.source);
+
+    return equal;
+}
+
+static u32 rt_hash(struct ti_mfa_link link)
 {
     unsigned char *key_to_hash;
     int key_length = 0;
 
     key_length += ETH_ALEN * 2;
-
     key_to_hash = kcalloc(sizeof(char), key_length, GFP_KERNEL);
 
-    ether_addr_copy(&key_to_hash[0], rt.link.dest);
-    ether_addr_copy(&key_to_hash[ETH_ALEN], rt.link.source);
-    /* memmove(&key_to_hash[ETH_ALEN * 2], rt.out_dev_name, IFNAMSIZ); */
-    /* memmove(&key_to_hash[key_length - sizeof(rt.destination_label)], &(rt.destination_label), */
-    /*         sizeof(rt.destination_label)); */
+    if (ether_addr_to_u64(link.source) < ether_addr_to_u64(link.dest)) {
+        ether_addr_copy(&key_to_hash[0], link.source);
+        ether_addr_copy(&key_to_hash[ETH_ALEN], link.dest);
+    } else {
+        ether_addr_copy(&key_to_hash[0], link.dest);
+        ether_addr_copy(&key_to_hash[ETH_ALEN], link.source);
+    }
 
     return jhash(key_to_hash, key_length, 0);
 }
@@ -39,11 +51,10 @@ u32 rt_hash(struct ti_mfa_route rt)
 struct ti_mfa_route *rt_lookup(struct ti_mfa_route rt)
 {
     struct ti_mfa_route *found_rt;
-    u32 key = rt_hash(rt);
-     hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
+    u32 key = rt_hash(rt.link);
+    hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
         if (strcmp(found_rt->out_dev_name, rt.out_dev_name) == 0
-                && ether_addr_equal(found_rt->link.source, rt.link.source)
-                && ether_addr_equal(found_rt->link.dest, rt.link.dest)
+                && rt_link_equal(found_rt->link, rt.link)
                 && found_rt->destination_label == rt.destination_label) {
             return found_rt;
         }
@@ -55,9 +66,9 @@ int rt_add(struct ti_mfa_route new_route)
 {
     int ret = -1;
     u32 hash_key;
-    struct ti_mfa_route *tmp, *rt;
+    struct ti_mfa_route *rt;
 
-    if ((tmp = rt_lookup(new_route)) != NULL) {
+    if (rt_lookup(new_route)) {
         pr_err("Route already exists\n");
         goto end;
     }
@@ -71,7 +82,7 @@ int rt_add(struct ti_mfa_route new_route)
 
     *rt = new_route;
 
-    hash_key = rt_hash(new_route);
+    hash_key = rt_hash(rt->link);
     write_lock_bh(&ti_mfa_rwlock);
     hash_add_rcu(backup_route_table, &rt->hnode, hash_key);
     write_unlock_bh(&ti_mfa_rwlock);
@@ -94,11 +105,10 @@ int rt_del(struct ti_mfa_route rt)
         goto end;
     }
 
-    key = rt_hash(rt);
+    key = rt_hash(rt.link);
     hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
         if (strcmp(found_rt->out_dev_name, rt.out_dev_name) == 0
-                && ether_addr_equal(found_rt->link.source, rt.link.source)
-                && ether_addr_equal(found_rt->link.dest, rt.link.dest)
+                && rt_link_equal(found_rt->link, rt.link)
                 && found_rt->destination_label == rt.destination_label) {
 
             pr_debug("Deleting route for %u\n", found_rt->destination_label);
@@ -133,7 +143,6 @@ int rt_show(char *dst, size_t size)
         sprintf(dst + strlen(dst), "\tLink Source: %pM\n", rt->link.source);
         sprintf(dst + strlen(dst), "\tLink Dest:   %pM\n", rt->link.dest);
         sprintf(dst + strlen(dst), "\tOut dev:     %s\n", rt->out_dev_name);
-        pr_debug("\tOut dev:     %s\n", rt->out_dev_name);
 
         sprintf(dst + strlen(dst), "------------------\n");
     }
