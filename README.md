@@ -2,13 +2,13 @@
 
 **Note:** TI-MFA is currently only implemented for MPLS. Srv6 is not supported (yet).
 
-A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-MFA) algorithm from [^1] ("described from the viewpoint of the node v where the packet hits another failed link"):
+A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-MFA) algorithm from [^1] ('described from the viewpoint of the node v where the packet hits another failed link'):
 >   1) Flush the label stack except for the destination t.
 >   2) Based on all link failures stored in the packet header,
 >       determine the shortest path P to the destination t in the
 >       remaining network G′.
 >   3) Add segments to the label stack of the packet as follows:
->       • Index the nodes on P as v = v1, v2, . . . , vx = t.
+>       • Index the nodes on P as v = v1, v2, …, vx = t.
 >           Compute the node vi on P with the highest index s.t. the shortest path from v is identical in G′ (with failures) and G (without failures) and set it as the top of the label stack.
 >           If this node is v, push the link (v1, v2 = vi) as the top of the label stack.
 >           For the second item on the label stack, start over with vi as the starting node, etc., until vi = t.
@@ -22,50 +22,77 @@ Needs Kernel `>= 5.16.0` (For Egress Hook)
 `ti-mfa-conf` configuration tool for:
 * adding a route
 * deleting a route
-* showing a route
 * deleting all routes
-* showingi all routes
+* showing all routes
 
 Routes are backup routes in case of a link failure.
 A link failure is specified by 2 hardware addresses.
-A route is an MPLS label
+A route is an MPLS label.
 
 #### Kernel Module (Data plane)
 ```mermaid
 graph TB
-    IP((Incoming Packet)) --> IH_IF{"if (MPLS)"}
+    subgraph Kernel Module
+        IP((Incoming Packet)) --> IH_IF{"if (MPLS)"}
 
-    subgraph NF_IH["Netfilter Ingress Hook"]
-        IH_IF        -->|true| IH_IF_TI_MFA{"if (BOS && MPLS Extension Label)"}
-        IH_IF_TI_MFA -->|true| A(Remove TI-MFA headers)
+        subgraph NF_IH["Netfilter Ingress Hook"]
+            IH_IF        -->|true| IH_IF_TI_MFA{"if (BOS && MPLS Extension Label)"}
+            IH_IF_TI_MFA -->|true| A(Remove TI-MFA headers)
+        end
+
+        IH_IF        -->|false| R[Kernel Routing]
+        IH_IF_TI_MFA -->|false| R
+        A            -->        R
+        R            -->|false| EH_IF{"if (MPLS)"}
+        EH_IF        -->|false| OP((Outgoing Packet))
+
+        subgraph NF_EH[Netfilter Egress Hook]
+            EH_IF     -->|true| 1_TI_MFA(1. Flush MPLS and/or TI-MFA headers)
+            1_TI_MFA  -->        2_TI_MFA(2. Get shortest path)
+            2_TI_MFA  -->        SLF(Set local link failures)
+            SLF       -->        IF_LF_PHP{"if (Local Link Failures)"}
+            IF_LF_PHP -->|true| 3_TI_MFA(3. Set label stack)
+            IF_LF_PHP -->|false| PHP(PHP: Set package type to IP)
+        end
+
+        2_TI_MFA -.-> ROUTE_READ(Look for Backup Routes)
+
+        SLF     -.-> NEIGH_READ
+        3_TI_MFA -->  OP
+        PHP      -->  OP
+
+        subgraph Netdev Notifier
+            NETDEV_GOING_DOWN>NETDEV_GOING_DOWN] --> NEIGH_ADD(Add Entry)
+            NETDEV_UP>NETDEV_UP]                 --> NEIGH_DEL(Remove Entry)
+            NEIGH_ADD                            --> NEIGH[(Table of Deleted Neighbours)]
+            NEIGH_DEL                            --> NEIGH
+            NEIGH_READ[Read entries]             --> NEIGH
+        end
+
+        NETLINK_RCV --> ROUTE_ADD
+        NETLINK_RCV --> ROUTE_DEL
+        NETLINK_RCV --> ROUTE_FLUSH
+        NETLINK_RCV --> ROUTE_SHOW
+
+        subgraph Backup Route Configuration
+            ROUTE_ADD(Add Entry)                        --> ROUTES[(Routing Table)]
+            ROUTE_DEL(Delete Entry)                        --> ROUTES
+            ROUTE_FLUSH(Delete all Entries)                      --> ROUTES
+            ROUTE_SHOW(Show all Entries)                       --> ROUTES
+            ROUTE_READ  -->ROUTES
+        end
+
     end
 
-    IH_IF        -->|false| R[Kernel Routing]
-    IH_IF_TI_MFA -->|false| R
-    A            -->        R
-    R            -->|false| EH_IF{"if (MPLS)"}
-    EH_IF        -->|false| OP((Outgoing Packet))
-
-    subgraph NF_EH[Netfilter Egress Hook]
-        EH_IF     -->|true| 1_TI_MFA(1. Flush MPLS and/or TI-MFA headers)
-        1_TI_MFA  -->        2_TI_MFA(2. Get shortest path)
-        2_TI_MFA  -->        SLF(Set local link failures)
-        SLF       -->        IF_LF_PHP{"if (Local Link Failures)"}
-        IF_LF_PHP -->|true| 3_TI_MFA(3. Set label stack)
-        IF_LF_PHP -->|false| PHP(PHP: Set package type to IP)
+    subgraph ti-mfa-conf commandline tool
+        TI_MFA_CONF_ADD[/ti-mfa-conf add/]     --> NETLINK_SEND(Send Netlink Message)
+        TI_MFA_CONF_DEL[/ti-mfa-conf del/]     --> NETLINK_SEND(Send Netlink Message)
+        TI_MFA_CONF_FLUSH[/ti-mfa-conf flush/] --> NETLINK_SEND(Send Netlink Message)
+        TI_MFA_CONF_SHOW[/ti-mfa-conf show/]   --> NETLINK_SEND(Send Netlink Message)
     end
 
-    SLF     -.-> NEIGH_READ
-    3_TI_MFA -->  OP
-    PHP      -->  OP
-
-    subgraph Netdev Notifier
-        NETDEV_GOING_DOWN>NETDEV_GOING_DOWN] --> NEIGH_ADD(Add Entry)
-        NETDEV_UP>NETDEV_UP]                 --> NEIGH_DEL(Remove Entry)
-        NEIGH_ADD                            --> NEIGH[(Table of Deleted Neighbours)]
-        NEIGH_DEL                            --> NEIGH
-        NEIGH_READ[Read entries]             --> NEIGH
-    end
+    NETLINK_SEND --> NETLINK_SOCKET
+    NETLINK_SOCKET --> NETLINK_RCV(Receive Netlink Message)
 ```
 * PHP: [Penultimate hop popping](https://www.rfc-editor.org/rfc/rfc3031.html#section-3.16)
 
