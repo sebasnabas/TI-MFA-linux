@@ -76,64 +76,91 @@ static int get_shortest_path(struct net *net, const u32 destination,
                              const struct ti_mfa_shim_hdr link_failures[], const uint link_failure_count,
                              struct ti_mfa_nh *next_hop)
 {
-    int error = 0;
+    int reroute_count = 0;
+    struct ti_mfa_route *reroutes = NULL;
+    int i = 0, error = 0;
     int nh_index = 0;
     struct mpls_nh *mpls_next_hop = NULL;
-    struct mpls_route *rt = mpls_route_input_rcu(net, destination);
-    struct neighbour *neigh;
+    struct mpls_route *rt = NULL;
+    struct neighbour *neigh = NULL;
 
-    if (!rt) {
-        pr_err("No route found\n");
-        return -1;
-    }
+    /* TODO:  <20-04-22>
+     * @Parameters: link failures, destination
+     * 1) For each link failure
+     *  1. look up the evasion route (mpls label)
+     *  2. get the mpls route for it
+     *  3. save the mpls route and defined outgoing dev
+     * 2) For each saved mpls route (label and dev)
+     *  1. Save next hop
+     * 3) Calculate next hop with shortest path
+     * @returns next hop
+     */
 
-    for_nexthops(rt) {
-        bool skip = false;
-        int i = 0;
-        u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
-        struct net_device *nh_dev = nh->nh_dev;
-
-        if (!nh_dev)
+    for (i = 0; i < link_failure_count; ++i) {
+        int dest;
+        struct ti_mfa_link failed_link = ti_mfa_hdr_to_link(link_failures[i]);
+        /* Step 1.1 */
+        struct ti_mfa_route *found_rt = rt_lookup(failed_link);
+        if (!found_rt)
             continue;
 
-        switch (nh->nh_via_table) {
-            case NEIGH_ARP_TABLE:
-                neigh = __ipv4_neigh_lookup_noref(nh_dev, neigh_index);
-                break;
-            default:
-                // @TODO: Support for IPv6
-                break;
+        dest = found_rt->destination_label;
+
+        /* Step 1.2 */
+        rt = mpls_route_input_rcu(net, destination);
+        if (!rt) {
+            pr_err("No route found\n");
+            return -1;
         }
 
-        pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, neigh->ha);
-        pr_debug("labels:\n");
-        for (i = 0; i < nh->nh_labels; i++)
-        {
-            pr_debug("%u\n", nh->nh_label[i]);
-        }
+        for_nexthops(rt) {
+            bool skip = false;
+            int i = 0;
+            u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
+            struct net_device *nh_dev = nh->nh_dev;
 
-        for (i = 0; i < link_failure_count; i++) {
-            struct ti_mfa_shim_hdr link_failure = link_failures[i];
+            if (!nh_dev)
+                continue;
 
-            if (ether_addr_equal(neigh->ha, link_failure.link_source)
-                || ether_addr_equal(neigh->ha, link_failure.link_dest)
-                || ether_addr_equal(neigh->ha, link_failure.node_source)) {
-
-                pr_debug("Found neighbor with broken link [%pM] == [src: %pM | dest: %pM] skipping...\n", neigh->ha, link_failure.link_source, link_failure.link_dest);
-                skip = true;
-                break;
+            switch (nh->nh_via_table) {
+                case NEIGH_ARP_TABLE:
+                    neigh = __ipv4_neigh_lookup_noref(nh_dev, neigh_index);
+                    break;
+                default:
+                    // @TODO: Support for IPv6
+                    break;
             }
-        }
 
-        if (skip) continue;
+            pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, neigh->ha);
+            pr_debug("labels:\n");
+            for (i = 0; i < nh->nh_labels; i++)
+            {
+                pr_debug("%u\n", nh->nh_label[i]);
+            }
 
-        nh_index = nhsel;
+            for (i = 0; i < link_failure_count; i++) {
+                struct ti_mfa_shim_hdr link_failure = link_failures[i];
 
-    } endfor_nexthops(rt);
+                if (ether_addr_equal(neigh->ha, link_failure.link_source)
+                    || ether_addr_equal(neigh->ha, link_failure.link_dest)
+                    || ether_addr_equal(neigh->ha, link_failure.node_source)) {
 
-    mpls_next_hop = mpls_get_nexthop(rt, nh_index);
+                    pr_debug("Found neighbor with broken link [%pM] == [src: %pM | dest: %pM] skipping...\n", neigh->ha, link_failure.link_source, link_failure.link_dest);
+                    skip = true;
+                    break;
+                }
+            }
 
-    if (mpls_next_hop == NULL) return -1;
+            if (skip) continue;
+
+            nh_index = nhsel;
+
+        mpls_next_hop = mpls_get_nexthop(rt, nh_index);
+
+        /* Ignore next hop if there's no route towards it */
+        if (mpls_next_hop == NULL)
+            continue;
+    }
 
     next_hop->dev = mpls_next_hop->nh_dev;
     next_hop->labels = mpls_next_hop->nh_labels;
@@ -433,10 +460,10 @@ static int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     rcu_read_lock();
 
+    set_local_link_failures(net, link_failures, link_failure_count, destination.label, &next_hop);
+
     if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
         goto out_error;
-
-    set_local_link_failures(net, link_failures, link_failure_count, destination.label, &next_hop);
 
     if (next_hop.link_failure_count > 0) {
         pr_debug("Found local link failures -> Not doing PHP\n");

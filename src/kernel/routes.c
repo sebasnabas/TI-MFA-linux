@@ -45,16 +45,17 @@ bool links_equal(struct ti_mfa_link one, struct ti_mfa_link other)
     return equal;
 }
 
-struct ti_mfa_route *rt_lookup(struct ti_mfa_route rt)
+struct ti_mfa_route *rt_lookup(struct ti_mfa_link link)
 {
     struct ti_mfa_route *found_rt;
-    u32 key = rt_hash(rt.link);
+    u32 key = rt_hash(ink);
     hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
-        if (strcmp(found_rt->out_dev_name, rt.out_dev_name) == 0
-                && links_equal(found_rt->link, rt.link)
-                && found_rt->destination_label == rt.destination_label) {
+
+        /* Possible TODO
+         * Only accept one evasion route for each link failure for now
+         */
+        if (links_equal(found_rt->link, link))
             return found_rt;
-        }
     }
     return NULL;
 }
