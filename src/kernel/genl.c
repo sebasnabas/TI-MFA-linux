@@ -61,8 +61,6 @@ static void *extract_nl_attr(const struct genl_info *info, const int atype)
 
 static void extract_ti_mfa_attrs(const struct genl_info *info, struct ti_mfa_param *a)
 {
-    char *tmp = NULL;
-
     a->command         = (char *) extract_nl_attr(info, TI_MFA_A_COMMAND);
     a->link_source     = (struct mac *) extract_nl_attr(info, TI_MFA_A_LINK_SOURCE);
     a->link_dest       = (struct mac *) extract_nl_attr(info, TI_MFA_A_LINK_DEST);
@@ -145,9 +143,7 @@ static int add_backup_route(struct ti_mfa_param attr, struct genl_info *info)
  */
 static int ti_mfa_genl_add(struct sk_buff *skb, struct genl_info *info)
 {
-    int ret = 0;
     struct ti_mfa_param attr;
-    struct genl_msg_data data[1];
     extract_ti_mfa_attrs(info, &attr);
     print_attributes(&attr);
 
@@ -218,9 +214,7 @@ static int flush_routes(struct ti_mfa_param attr, struct genl_info *info)
  */
 static int ti_mfa_genl_del(struct sk_buff *skb, struct genl_info *info)
 {
-    int ret = 0;
     struct ti_mfa_param attr;
-    struct genl_msg_data data[1];
     extract_ti_mfa_attrs(info, &attr);
     print_attributes(&attr);
 
@@ -252,18 +246,11 @@ static int ti_mfa_genl_show(struct sk_buff *skb, struct genl_info *info)
  */
 static int ti_mfa_genl_flush(struct sk_buff * skb, struct genl_info * info)
 {
-    int ret = 0;
     struct ti_mfa_param attr;
-    /* struct genl_msg_data data[1]; */
     extract_ti_mfa_attrs(info, &attr);
     print_attributes(&attr);
 
     return flush_routes(attr, info);
-
-    /* set_msg_data(data, TI_MFA_A_RESPONSE, err_str[ret], strlen(err_str[ret])); */
-    /* ret =  send_response(info, 1, data); */
-
-    /* return ret; */
 }
 
 static int ti_mfa_genl_dispatcher(struct sk_buff * skb, struct genl_info * info)
