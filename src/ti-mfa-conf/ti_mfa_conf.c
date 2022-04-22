@@ -404,17 +404,6 @@ end:
     return ret;
 }
 
-static void print_command_line(int argc, char **argv)
-{
-    int i = 0;
-    printf("-----------------------\n");
-    printf("argc: %d\n", argc);
-    for (i = 0; i < argc; i++) {
-        printf("argv[%d]: %s\n", i, argv[i]);
-    }
-    printf("-----------------------\n");
-}
-
 static void print_parameters()
 {
     printf("--- Parsed parameters\n");
