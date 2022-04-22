@@ -183,8 +183,6 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
             continue;
         }
 
-        found_rt->mpls_rt = rt;
-
         pr_debug("Found backup route for link_failure: %pM-%pM: dest: %u\n",
                 found_rt->link.source, found_rt->link.dest, found_rt->destination_label);
 
