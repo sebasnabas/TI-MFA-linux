@@ -10,8 +10,10 @@
 #include <linux/rwlock.h>
 #include <linux/slab.h>
 
-#include "../include/routes.h"
+#include "routes.h"
 
+#define TABLE_SIZE 5  // 5 bits = 32 entries
+static DEFINE_HASHTABLE(backup_route_table, TABLE_SIZE);    /* backup routes table */
 
 rwlock_t ti_mfa_rwlock;
 
@@ -48,7 +50,7 @@ bool links_equal(struct ti_mfa_link one, struct ti_mfa_link other)
 struct ti_mfa_route *rt_lookup(struct ti_mfa_link link)
 {
     struct ti_mfa_route *found_rt;
-    u32 key = rt_hash(ink);
+    u32 key = rt_hash(link);
     hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
 
         /* Possible TODO
@@ -66,7 +68,7 @@ int rt_add(struct ti_mfa_route new_route)
     u32 hash_key;
     struct ti_mfa_route *rt;
 
-    if (rt_lookup(new_route)) {
+    if (rt_lookup(new_route.link)) {
         pr_err("Route already exists\n");
         goto end;
     }
