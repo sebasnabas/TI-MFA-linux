@@ -45,7 +45,7 @@ uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_
 uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max);
 int run_ti_mfa(struct net *net, struct sk_buff *skb);
 void ti_mfa_ifdown(struct net_device *dev);
-void ti_mfa_ifup(struct net_device *dev);
+void ti_mfa_ifup(const struct net_device *dev);
 int initialize_ti_mfa(void);
 void cleanup_ti_mfa(void);
 
