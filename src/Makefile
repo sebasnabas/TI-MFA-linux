@@ -1,5 +1,14 @@
-all: kernel tool
+.phony: all clean
+
+all: clean
+	$(MAKE) -C ./kernel
+	$(MAKE) -C ./ti-mfa-conf
+
 install: kernel-install tool-install
+
+clean:
+	$(MAKE) -C ./kernel clean
+	$(MAKE) -C ./ti-mfa-conf clean
 
 kernel:
 	$(MAKE) -C ./kernel
