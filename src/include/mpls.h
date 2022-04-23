@@ -5,6 +5,8 @@
 #include <linux/mpls.h>
 #include <linux/rtnetlink.h>
 
+#include "ti_mfa.h"
+
 extern bool mpls_output_possible(struct net_device *dev);
 
 #define MPLS_LABEL(x)   (x & MPLS_LS_LABEL_MASK) >> MPLS_LS_LABEL_SHIFT;
@@ -12,8 +14,6 @@ extern bool mpls_output_possible(struct net_device *dev);
 #define MPLS_STACK(x)   (x & MPLS_LS_TC_MASK) >> MPLS_LS_TC_SHIFT;
 #define MPLS_TTL(x)     (x & MPLS_LS_S_MASK) >> MPLS_LS_S_SHIFT;
 
-// /* Copied from /net/mpls/internal.h */
-#define MAX_NEW_LABELS 30
 
 enum mpls_payload_type {
 	MPT_UNSPEC, /* IPv4 or IPv6 */
@@ -181,5 +181,9 @@ static inline struct mpls_nh *mpls_get_nexthop(struct mpls_route *rt, u8 index)
 }
 /* } */
 
+uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels);
+struct mpls_nh *get_failure_free_next_hop(struct net *net, const u32 destination,
+                               const uint link_failure_count,
+                               const struct ti_mfa_shim_hdr link_failures[]);
 
 #endif /* TI_MFA_MPLS_H */

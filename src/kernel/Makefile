@@ -1,5 +1,5 @@
 obj-m := ti-mfa.o
-ti-mfa-m := hook.o ti_mfa_algo.o utils.o genl.o routes.o
+ti-mfa-m := hook.o mpls.o ti_mfa_algo.o utils.o genl.o routes.o
 
 GEN_COMPILE_COMMANDS := ../../generate_compdb.py
 
