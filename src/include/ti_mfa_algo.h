@@ -13,7 +13,6 @@
 #define TI_MFA_ERROR    0x02
 #define TI_MFA_RETRY    0x03
 
-uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels);
 uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max);
 int run_ti_mfa(struct net *net, struct sk_buff *skb);
 void ti_mfa_ifdown(struct net_device *dev);
