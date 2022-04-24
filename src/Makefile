@@ -20,4 +20,4 @@ tool:
 	$(MAKE) -C ./ti-mfa-conf
 
 tool-install:
-	$(MAKE) -C ./ti-mfa-conf
+	$(MAKE) -C ./ti-mfa-conf install
