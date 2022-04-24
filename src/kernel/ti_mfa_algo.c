@@ -47,17 +47,108 @@ uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_f
     return count;
 }
 
-/* Step 2): Determine shortest path P to t based on all link failures in the remaining network G' (Get next hop)
+static bool is_link_failure(const unsigned char addr[], const uint link_failure_count, const struct ti_mfa_shim_hdr link_failures[])
+{
+    uint i = 0;
+    /* Go through each link failure and
+     * check if the neighbor belonging to the next hop is affected
+     */
+    for (i = 0; i < link_failure_count; i++) {
+        struct ti_mfa_shim_hdr link_failure = link_failures[i];
+
+        if (ether_addr_equal(addr, link_failure.link_source)
+            || ether_addr_equal(addr, link_failure.link_dest)
+            || ether_addr_equal(addr, link_failure.node_source)) {
+
+            pr_debug("Found neighbor with broken link [%pM] == [src: %pM | dest: %pM] skipping...\n",
+                     addr, link_failure.link_source, link_failure.link_dest);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 destination,
+                                                   const uint local_link_failure_count,
+                                                   const struct ti_mfa_shim_hdr local_link_failures[],
+                                                   const uint link_failure_count,
+                                                   const struct ti_mfa_shim_hdr link_failures[])
+{
+    struct mpls_route *rt    = NULL;
+    struct neighbour *neigh  = NULL;
+    struct mpls_nh *next_mpls_hop = NULL;
+    struct ti_mfa_nh *next_hop  = NULL;
+    int nh_index = 0;
+
+    rt = mpls_route_input_rcu(net, destination);
+    if (!rt) {
+        pr_err("No route found\n");
+        return NULL;
+    }
+
+    for_nexthops(rt) {
+        u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
+        struct net_device *nh_dev = nh->nh_dev;
+
+        if (!nh_dev)
+            continue;
+
+        switch (nh->nh_via_table) {
+            case NEIGH_ARP_TABLE:
+                neigh = __ipv4_neigh_lookup_noref(nh_dev, neigh_index);
+                break;
+            default:
+                // @TODO: Support for IPv6
+                break;
+        }
+
+        pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, neigh->ha);
+        debug_print_labels(nh->nh_labels, nh->nh_label);
+
+        if (is_link_failure(neigh->ha, local_link_failure_count, local_link_failures)
+            || is_link_failure(neigh->ha, link_failure_count, link_failures)) {
+
+            pr_debug("Not using this next hop, since there's a link failure for %pM\n", neigh->ha);
+            continue;
+        }
+
+        nh_index = nhsel;
+
+        next_mpls_hop = mpls_get_nexthop(rt, nh_index);
+
+        /* Ignore next hop if there's no route towards it */
+        if (next_mpls_hop == NULL)
+            continue;
+        /* If there's a route, just take the first next hop */
+        else
+            break;
+    } endfor_nexthops(rt);
+
+    if (next_mpls_hop == NULL)
+    {
+        return NULL;
+    }
+
+    next_hop = kmalloc(sizeof(struct ti_mfa_nh), GFP_KERNEL);
+
+    next_hop->dev = next_mpls_hop->nh_dev;
+    next_hop->labels = next_mpls_hop->nh_labels;
+    memmove(next_hop->label, next_mpls_hop->nh_label, sizeof(*(next_mpls_hop->nh_label)));
+    ether_addr_copy(next_hop->ha, neigh->ha);
+
+    return next_hop;
+}
+
+/* Step 2): Determine shortest path P to t based on all  link failures in the remaining network G' (Get next hop)
 */
 static int get_shortest_path(struct net *net, const u32 original_destination,
                              const struct ti_mfa_shim_hdr link_failures[], const uint link_failure_count,
                              struct ti_mfa_nh *next_hop)
 {
-    int reroute_count = 0;
-    int index = 0, error = 0;
-    struct mpls_nh *mpls_next_hop = NULL;
-    struct mpls_route *rt = NULL;
-    struct neighbour *neigh = NULL;
+    int index = 0, error = 0, reroute_count = 0;
+    struct mpls_route *rt;
+    struct ti_mfa_nh *tmp_nh = NULL;
     struct net_device *out_dev = NULL;
     uint hop_min = UINT_MAX;
 
@@ -94,13 +185,19 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
 
         /* Use number of hops as metric. I didn't find any route preference metric for mpls */
         if (rt->rt_nhn < hop_min) {
-            struct net_device *out_dev_tmp = dev_get_by_name(net, found_rt->out_dev_name);
+            struct net_device *out_dev_tmp = NULL;
+            tmp_nh = get_failure_free_next_hop(net, found_rt->destination_label,
+                                                 next_hop->link_failure_count, next_hop->link_failures,
+                                                 link_failure_count, link_failures);
+
+            if (tmp_nh == NULL)
+                continue;
+
+            out_dev_tmp = dev_get_by_name(net, found_rt->out_dev_name);
             if (mpls_output_possible(out_dev_tmp))
                 out_dev = out_dev_tmp;
 
             hop_min = rt->rt_nhn;
-            mpls_next_hop = get_failure_free_next_hop(net, found_rt->destination_label,
-                                                      link_failure_count, link_failures);
         }
 
         reroute_count++;
@@ -108,21 +205,30 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
 
     /* Ignore destination route if there's a needed backup route */
     if (reroute_count == 0)
-        mpls_next_hop = get_failure_free_next_hop(net, original_destination, link_failure_count, link_failures);
+        tmp_nh = get_failure_free_next_hop(net, original_destination,
+                                           next_hop->link_failure_count, next_hop->link_failures,
+                                           link_failure_count, link_failures);
 
-    if (next_hop == NULL)
+    if (tmp_nh == NULL)
     {
         pr_debug("No next hop found\n");
-        return -1;
+        error = -1;
+        goto out_free;
     }
 
-    if (out_dev == NULL)
-        out_dev = mpls_next_hop->nh_dev;
+    if (out_dev)
+        tmp_nh->dev = out_dev;
 
-    next_hop->dev = out_dev;
-    next_hop->labels = mpls_next_hop->nh_labels;
-    memmove(next_hop->label, mpls_next_hop->nh_label, sizeof(*(mpls_next_hop->nh_label)));
-    ether_addr_copy(next_hop->ha, neigh->ha);
+    next_hop->dev = tmp_nh->dev;
+    next_hop->labels = tmp_nh->labels;
+    memmove(next_hop->label, tmp_nh->label, sizeof(*(tmp_nh->label)));
+    ether_addr_copy(next_hop->ha, tmp_nh->ha);
+
+    debug_print_next_hop(*next_hop);
+
+out_free:
+    if (tmp_nh)
+        kfree(tmp_nh);
 
     return error;
 }
@@ -214,7 +320,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 {
     int error = 0;
     int i, j, headroom, new_header_size;
-    unsigned int mtu, ti_mfa_hdr_size, mpls_hdr_size = 0;
+    unsigned int hh_len, mtu, ti_mfa_hdr_size, mpls_hdr_size = 0;
     unsigned int label_count = 0;
     const unsigned int max_labels = nh->labels == 0 ? orig_label_count : nh->labels;
     struct mpls_entry_decoded *new_label_stack = kmalloc_array(max_labels, sizeof(struct mpls_entry_decoded), GFP_KERNEL);
@@ -281,11 +387,15 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         goto out_free;
     }
 
+    hh_len = LL_RESERVED_SPACE(out_dev);
+	if (!out_dev->header_ops)
+		hh_len = 0;
+
     headroom = skb_headroom(skb);
-    if (new_header_size - headroom <= 0)
+    if (new_header_size + hh_len > headroom)
     {
         if (skb_expand_head(skb, new_header_size)) {
-            pr_err("Cannot expand head. headroom: %u, new header size: %u\n", headroom, new_header_size);
+            pr_err("Cannot expand head. headroom: %d, new header size: %d\n", headroom, new_header_size);
             error = -1;
             goto out_free;
         }
