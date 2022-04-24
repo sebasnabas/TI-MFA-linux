@@ -170,8 +170,11 @@ void set_local_link_failures(const struct net *net,
 
         ether_addr_copy(next_hop->link_failures[link_failures].link_source, neigh->dev->dev_addr);
         ether_addr_copy(next_hop->link_failures[link_failures].link_dest, neigh->ha);
-        /* Not setting link_failures[]->node_source, because it's the same for all of them */
-        pr_debug("Adding link failure to node %pM for label %u\n", next_hop->link_failures[link_failures].link_dest, destination);
+
+        /* Setting link_failures[]->node_source to empty, because it's the same for all of them */
+        eth_zero_addr(next_hop->link_failures[link_failures].node_source);
+
+        pr_debug("Adding link failure from %pM to %pM for label %u\n", next_hop->link_failures[link_failures].link_source, next_hop->link_failures[link_failures].link_dest, destination);
         link_failures++;
     }
     next_hop->link_failure_count = link_failures;
