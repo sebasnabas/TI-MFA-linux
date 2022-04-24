@@ -111,7 +111,8 @@ int rt_del(struct ti_mfa_route rt)
                 && links_equal(found_rt->link, rt.link)
                 && found_rt->destination_label == rt.destination_label) {
 
-            pr_debug("Deleting route for %u\n", found_rt->destination_label);
+            pr_debug("Deleting route for %pM <-> %pM to %u\n", found_rt->link.source,
+                    found_rt->link.dest, found_rt->destination_label);
             hash_del_rcu(&found_rt->hnode);
 
             /* TODO: Figure out how to avoid freeze on free <19-04-22> */

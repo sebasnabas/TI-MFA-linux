@@ -20,7 +20,8 @@ rwlock_t ti_mfagenl_rwlock;
 char *err_str[] = {"TI-MFA answers: OK.",
                    "TI-MFA answers: [ERROR]: TI-MFA could not allocate memory.",
                    "TI-MFA answers: [ERROR]: Backup route table has no entries.",
-                   "TI-MFA answers: [ERROR]: Missing arguments."
+                   "TI-MFA answers: [ERROR]: Missing arguments.",
+                   "TI-MFA answers: [ERROR]: Route already exists."
                   };
 
 static struct genl_family ti_mfa_genl_family = {
@@ -130,6 +131,13 @@ static int add_backup_route(struct ti_mfa_param attr, struct genl_info *info)
         strcpy(rt.out_dev_name, attr.backup_dev_name);
 
         ret = rt_add(rt);
+
+        if (ret == -ENOMEM)
+            ret = 1;
+        else if (ret != 0)
+            ret = 4;
+        else
+            ret = 0;
     }
 
     set_msg_data(data, TI_MFA_A_RESPONSE, err_str[ret], strlen(err_str[ret]));
@@ -232,7 +240,6 @@ static int ti_mfa_genl_show(struct sk_buff *skb, struct genl_info *info)
     extract_ti_mfa_attrs(info, &attr);
     print_attributes(&attr);
 
-    pr_debug("Got SHOW\n");
     ret = show_all_routes(info);
 
     set_msg_data(data, TI_MFA_A_RESPONSE_LST, err_str[ret], strlen(err_str[ret]));
