@@ -4,7 +4,7 @@ default:
 clean: deinstall
 	rm ti-mfa-conf || true
 
-install:
+install: default
 	sudo cp -f ti-mfa-conf /usr/bin
 
 deinstall:
