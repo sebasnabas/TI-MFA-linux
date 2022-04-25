@@ -8,6 +8,14 @@
 
 #include "ti_mfa.h"
 
+enum ti_mfa_route_exit_code {
+    TI_MFA_RT_OK,
+    TI_MFA_RT_NO_MEMORY,
+    TI_MFA_RT_ROUTING_TABLE_EMPTY,
+    TI_MFA_RT_ROUTE_ALREADY_EXISTS,
+    TI_MFA_RT_ROUTE_DOES_NOT_EXIST
+};
+
 u32 rt_hash(struct ti_mfa_link link);
 int rt_add(struct ti_mfa_route rt);
 int rt_del(struct ti_mfa_route rt);

@@ -64,19 +64,20 @@ struct ti_mfa_route *rt_lookup(struct ti_mfa_link link)
 
 int rt_add(struct ti_mfa_route new_route)
 {
-    int ret = -1;
+    int ret = TI_MFA_RT_OK;
     u32 hash_key;
     struct ti_mfa_route *rt;
 
     if (rt_lookup(new_route.link)) {
         pr_err("Route already exists\n");
+        ret = TI_MFA_RT_ROUTE_ALREADY_EXISTS;
         goto end;
     }
 
     rt = kmalloc(sizeof(*rt), GFP_KERNEL);
     if (!rt) {
         pr_err("Could not allocate memory for new route entry\n");
-        ret = -ENOMEM;
+        ret = TI_MFA_RT_NO_MEMORY;
         goto end;
     }
 
@@ -87,21 +88,19 @@ int rt_add(struct ti_mfa_route new_route)
     hash_add_rcu(backup_route_table, &rt->hnode, hash_key);
     write_unlock_bh(&ti_mfa_rwlock);
 
-    ret = 0;
-    goto end;
-
 end:
     return ret;
 }
 
 int rt_del(struct ti_mfa_route rt)
 {
-    int ret = -1;
+    int ret = TI_MFA_RT_ROUTE_DOES_NOT_EXIST;
     u32 key;
     struct ti_mfa_route *found_rt = NULL;
 
     if (hash_empty(backup_route_table)) {
         pr_debug("Routing table is empty\n");
+        ret = TI_MFA_RT_ROUTING_TABLE_EMPTY;
         goto end;
     }
 
@@ -117,8 +116,8 @@ int rt_del(struct ti_mfa_route rt)
 
             /* TODO: Figure out how to avoid freeze on free <19-04-22> */
             /* kfree(found_rt); */
-            ret = 0;
-       }
+            ret = TI_MFA_RT_OK;
+        }
     }
 
 end:
@@ -127,11 +126,12 @@ end:
 
 int rt_show(char *dst, size_t size)
 {
-    int i = 0, ret = -1;
+    int i = 0, ret = TI_MFA_RT_OK;
     struct ti_mfa_route *rt;
 
     if (hash_empty(backup_route_table)) {
         pr_debug("Routing table is empty\n");
+        ret = TI_MFA_RT_ROUTING_TABLE_EMPTY;
         goto end;
     }
 
@@ -149,20 +149,19 @@ int rt_show(char *dst, size_t size)
     }
     rcu_read_unlock();
 
-    ret = 0;
-
 end:
     return ret;
 }
 
 int rt_flush(void)
 {
-    int i, ret = 0;
+    int i, ret = TI_MFA_RT_OK;
     struct ti_mfa_route *rt;
     struct hlist_node   *tmp;
 
     if (hash_empty(backup_route_table)) {
         pr_debug("table with backup routes is empty");
+        ret = TI_MFA_RT_ROUTING_TABLE_EMPTY;
         goto end;
     }
 

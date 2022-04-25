@@ -17,12 +17,14 @@
 
 rwlock_t ti_mfagenl_rwlock;
 
-char *err_str[] = {"TI-MFA answers: OK.",
-                   "TI-MFA answers: [ERROR]: TI-MFA could not allocate memory.",
-                   "TI-MFA answers: [ERROR]: Backup route table has no entries.",
-                   "TI-MFA answers: [ERROR]: Missing arguments.",
-                   "TI-MFA answers: [ERROR]: Route already exists."
-                  };
+char *err_str[] = {
+    "TI-MFA answers: OK.",
+    "TI-MFA answers: [ERROR]: TI-MFA could not allocate memory.",
+    "TI-MFA answers: [ERROR]: Backup route table has no entries.",
+    "TI-MFA answers: [ERROR]: Missing arguments.",
+    "TI-MFA answers: [ERROR]: Route already exists.",
+    "TI-MFA answers: [ERROR]: Route does not exist."
+};
 
 static struct genl_family ti_mfa_genl_family = {
     /* .id = 1, */
@@ -84,7 +86,7 @@ static int send_response(struct genl_info *info, unsigned int n_data,
 {
     struct sk_buff *skb;
     void *skb_head;
-    int i, ret;
+    int i;
 
     skb = genlmsg_new(NLMSG_GOODSIZE, GFP_ATOMIC);
     if (skb == NULL) {
@@ -99,6 +101,7 @@ static int send_response(struct genl_info *info, unsigned int n_data,
     }
 
     for (i = 0; i < n_data; i++) {
+        int ret;
         if ((ret = nla_put(skb, msg_data[i].atype, msg_data[i].len, msg_data[i].data)) < 0) {
             pr_err("send_response - unable to put attribute %d for elem %d/%d: %d", msg_data[i].atype, i, n_data, ret);
             return -1;
@@ -130,22 +133,25 @@ static int add_backup_route(struct ti_mfa_param attr, struct genl_info *info)
         ether_addr_copy(rt.link.dest, attr.link_dest->oct);
         strcpy(rt.out_dev_name, attr.backup_dev_name);
 
-        ret = rt_add(rt);
-
-        if (ret == -ENOMEM)
-            ret = 1;
-        else if (ret != 0)
-            ret = 4;
-        else
-            ret = 0;
+        switch (rt_add(rt)) {
+            case TI_MFA_RT_OK:
+                ret = 0;
+                break;
+            case TI_MFA_RT_NO_MEMORY:
+                ret = 1;
+                break;
+            case TI_MFA_RT_ROUTE_ALREADY_EXISTS:
+                ret = 4;
+                break;
+            default:
+                break;
+        }
     }
 
     set_msg_data(data, TI_MFA_A_RESPONSE, err_str[ret], strlen(err_str[ret]));
     ret =  send_response(info, 1, data);
     return ret;
-
 }
-
 
 /* ti_mfa_genl_add() - handles ti_mfaconf add commands
  */
@@ -173,6 +179,23 @@ static int del_backup_route(struct ti_mfa_param attr, struct genl_info *info)
         strcpy(rt.out_dev_name, attr.backup_dev_name);
 
         ret = rt_del(rt);
+
+        switch (ret) {
+            case TI_MFA_RT_OK:
+                ret = 0;
+                break;
+            case TI_MFA_RT_NO_MEMORY:
+                ret = 1;
+                break;
+            case TI_MFA_RT_ROUTING_TABLE_EMPTY:
+                ret = 2;
+                break;
+            case TI_MFA_RT_ROUTE_DOES_NOT_EXIST:
+                ret = 5;
+                break;
+            default:
+                break;
+        }
     }
 
     set_msg_data(data, TI_MFA_A_RESPONSE, err_str[ret], strlen(err_str[ret]));
@@ -192,13 +215,19 @@ static int show_all_routes(struct genl_info *info)
 
     ret = rt_show(message + strlen(message), 40);
 
-    if (ret == 0)
-        if (strlen(message) > len)
-            set_msg_data(data, TI_MFA_A_RESPONSE, RESPONSE_ER, strlen(RESPONSE_ER));
-        else
-            set_msg_data(data, TI_MFA_A_RESPONSE_LST, message, strlen(message));
-    else
-        set_msg_data(data, TI_MFA_A_RESPONSE_LST, err_str[ret], strlen(err_str[ret]));
+    switch (ret) {
+        case TI_MFA_RT_OK:
+            if (strlen(message) > len)
+                set_msg_data(data, TI_MFA_A_RESPONSE, RESPONSE_ER, strlen(RESPONSE_ER));
+            else
+                set_msg_data(data, TI_MFA_A_RESPONSE_LST, message, strlen(message));
+            break;
+        case TI_MFA_RT_ROUTING_TABLE_EMPTY: ;
+            ret = 2;
+            fallthrough;
+        default:
+            set_msg_data(data, TI_MFA_A_RESPONSE_LST, err_str[ret], strlen(err_str[ret]));
+    }
 
     ret = send_response(info, 1, data);
 
