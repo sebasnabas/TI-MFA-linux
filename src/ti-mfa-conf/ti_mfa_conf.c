@@ -75,12 +75,12 @@ static void parse_nl_attrs()
 
 static int do_receive_response()
 {
+    int ret = 0;
     memset(ans.buf, 0, MAX_BUF_LEN);
     int rep_len = recv(sd, &ans, sizeof(ans), 0);
 
     if (ans.n.nlmsg_type == NLMSG_ERROR) {
-        printf("do_receive_response - received nack - leaving.\n");
-        exit(-1);
+        ret = -1;
     }
     if (rep_len < 0) {
         printf("do_receive_response - error receiving reply message.\n");
@@ -93,7 +93,7 @@ static int do_receive_response()
 
     parse_nl_attrs();
 
-    return 0;
+    return ret;
 }
 
 static int receive_response()
