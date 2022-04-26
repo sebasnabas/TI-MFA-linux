@@ -4,9 +4,13 @@ pushd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
 vagrant up
 
-while IFS='=' read -r machine neighbour
+machine_neighbor_pairs=$(jq -r '.Neighbours | to_entries | .[] | .key as $machine | .value | map($machine + "=" + .) | .[]' network_config.json)
+
+for machine_neighbor_pair in $machine_neighbor_pairs
 do
-    vagrant ssh "$machine" -c "ping -c 1 $neighbour" >/dev/null &
-done < <(jq -r '.Neighbours | to_entries | .[] | .key as $machine | .value | map($machine + "=" + .) | .[]' network_config.json)
+    machine=${machine_neighbor_pair%=*}
+    neighbour=${machine_neighbor_pair#*=}
+    vagrant ssh "$machine" -c "ping -c 1 $neighbour"
+done
 
 popd || exit 1
