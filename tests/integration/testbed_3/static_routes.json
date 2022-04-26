@@ -1,0 +1,140 @@
+{
+    "A": {
+      "": [
+        "10.200.200.2 via 192.168.1.12 dev eth1",
+        "10.200.200.3 via 192.168.2.13 dev eth2",
+        "10.200.200.4 encap mpls  17100 via 192.168.1.12 dev eth1",
+        "10.200.200.5 encap mpls  17100 via 192.168.2.13 dev eth2",
+        "10.200.200.6 nexthop  encap mpls  17100 via 192.168.2.13 dev eth2 nexthop  encap mpls  17100 via 192.168.1.12 dev eth1 ",
+        "192.168.3.0/24 nexthop via 192.168.1.12 dev eth1 weight 1 nexthop via 192.168.2.13 dev eth2 weight 1",
+        "192.168.4.0/24 via 192.168.1.12 dev eth1",
+        "192.168.5.0/24 via 192.168.2.13 dev eth2",
+        "192.168.6.0/24 nexthop via 192.168.1.12 dev eth1 weight 1 nexthop via 192.168.2.13 dev eth2 weight 1",
+        "192.168.7.0/24 via 192.168.1.12 dev eth1",
+        "192.168.8.0/24 via 192.168.2.13 dev eth2"
+      ],
+      "-M": [
+        "5000 via inet 192.168.1.12 dev eth1",
+        "5001 via inet 192.168.1.12 dev eth1",
+        "5002 via inet 192.168.2.13 dev eth2",
+        "5003 via inet 192.168.2.13 dev eth2",
+        "17100 as to 17100 via inet 192.168.1.12 dev eth1 nexthop as to 17100 via inet 192.168.2.13 dev eth2"
+      ]
+    },
+    "B": {
+      "": [
+        "10.200.200.1 via 192.168.1.11 dev eth1",
+        "10.200.200.3 via 192.168.3.13 dev eth2",
+        "10.200.200.4 via 192.168.4.14 dev eth3",
+        "10.200.200.5 nexthop  encap mpls  17100 via 192.168.3.13 dev eth2 weight 1 nexthop  encap mpls  17100 via 192.168.4.14 dev eth3 weight 1",
+        "10.200.200.6 encap mpls  17100 via 192.168.4.14 dev eth3",
+        "192.168.2.0/24 via 192.168.3.13 dev eth2",
+        "192.168.5.0/24 via 192.168.3.13 dev eth2",
+        "192.168.6.0/24 via 192.168.4.14 dev eth3",
+        "192.168.7.0/24 via 192.168.4.14 dev eth3",
+        "192.168.8.0/24 nexthop via 192.168.3.13 dev eth2 weight 1 nexthop via 192.168.4.14 dev eth3 weight 1"
+      ],
+      "-M": [
+        "5000 via inet 192.168.1.11 dev eth1",
+        "5001 via inet 192.168.1.11 dev eth1",
+        "5002 via inet 192.168.3.13 dev eth2",
+        "5003 via inet 192.168.3.13 dev eth2",
+        "5004 via inet 192.168.4.14 dev eth3",
+        "5005 via inet 192.168.4.14 dev eth3",
+        "17100 as to 17100 via inet 192.168.4.14 dev eth3"
+      ]
+    },
+    "C": {
+      "": [
+        "10.200.200.1 via 192.168.2.11 dev eth1",
+        "10.200.200.2 via 192.168.3.12 dev eth2",
+        "10.200.200.4 nexthop  encap mpls  17100 via 192.168.3.12 dev eth2 weight 1 nexthop  encap mpls  17100 via 192.168.5.15 dev eth3 weight 1",
+        "10.200.200.5 via 192.168.5.15 dev eth3",
+        "10.200.200.6 encap mpls  17100 via 192.168.5.15 dev eth3",
+        "192.168.1.0/24 via 192.168.3.12 dev eth2",
+        "192.168.4.0/24 via 192.168.3.12 dev eth2",
+        "192.168.6.0/24 via 192.168.5.15 dev eth3",
+        "192.168.7.0/24 nexthop via 192.168.3.12 dev eth2 weight 1 nexthop via 192.168.5.15 dev eth3 weight 1",
+        "192.168.8.0/24 via 192.168.5.15 dev eth3"
+      ],
+      "-M": [
+        "5000 via inet 192.168.3.12 dev eth2",
+        "5001 via inet 192.168.3.12 dev eth2",
+        "5002 via inet 192.168.2.11 dev eth1",
+        "5003 via inet 192.168.2.11 dev eth1",
+        "5004 via inet 192.168.5.15 dev eth3",
+        "5005 via inet 192.168.5.15 dev eth3",
+        "17100 as to 17100 via inet 192.168.5.15 dev eth3"
+      ]
+    },
+    "D": {
+      "": [
+        "10.200.200.1 encap mpls  17100 via 192.168.4.12 dev eth1",
+        "10.200.200.2 via 192.168.4.12 dev eth1",
+        "10.200.200.3 nexthop  encap mpls  17100 via 192.168.4.12 dev eth1 weight 1 nexthop  encap mpls  17100 via 192.168.6.15 dev eth2 weight 1",
+        "10.200.200.5 via 192.168.6.15 dev eth2",
+        "10.200.200.6 via 192.168.7.16 dev eth3",
+        "192.168.1.0/24 via 192.168.4.12 dev eth1",
+        "192.168.2.0/24 nexthop via 192.168.4.12 dev eth1 weight 1 nexthop via 192.168.6.15 dev eth2 weight 1",
+        "192.168.3.0/24 via 192.168.4.12 dev eth1",
+        "192.168.5.0/24 via 192.168.6.15 dev eth2",
+        "192.168.8.0/24 nexthop via 192.168.6.15 dev eth2 weight 1 nexthop via 192.168.7.16 dev eth3 weight 1"
+      ],
+      "-M": [
+        "5000 via inet 192.168.4.12 dev eth1",
+        "5001 via inet 192.168.4.12 dev eth1",
+        "5002 via inet 192.168.6.15 dev eth2",
+        "5003 via inet 192.168.6.15 dev eth2",
+        "5026 via inet 192.168.7.16 dev eth3",
+        "5027 via inet 192.168.7.16 dev eth3",
+        "17100 as to 17100 via inet 192.168.4.12 dev eth1"
+      ]
+    },
+    "E": {
+      "": [
+        "10.200.200.1 encap mpls  17100 via 192.168.5.13 dev eth1 ",
+        "10.200.200.2 nexthop  encap mpls  17100 via 192.168.5.13 dev eth1 weight 1 nexthop  encap mpls  17100 via 192.168.6.14 dev eth2 weight 1",
+        "10.200.200.3 via 192.168.5.13 dev eth1" ,
+        "10.200.200.4 via 192.168.6.14 dev eth2" ,
+        "10.200.200.6 via 192.168.8.16 dev eth3",
+        "192.168.1.0/24 nexthop via 192.168.6.14 dev eth2 weight 1 nexthop via 192.168.5.13 dev eth1 weight 1",
+        "192.168.2.0/24 via 192.168.5.13 dev eth1" ,
+        "192.168.3.0/24 via 192.168.5.13 dev eth1" ,
+        "192.168.4.0/24 via 192.168.6.14 dev eth2" ,
+        "192.168.7.0/24 nexthop via 192.168.6.14 dev eth2 weight 1 nexthop via 192.168.8.16 dev eth3 weight 1"
+      ],
+      "-M": [
+        "5000 via inet 192.168.5.13 dev eth1",
+        "5001 via inet 192.168.5.13 dev eth1",
+        "5002 via inet 192.168.6.14 dev eth2",
+        "5003 via inet 192.168.6.14 dev eth2",
+        "5008 via inet 192.168.8.16 dev eth3",
+        "5009 via inet 192.168.8.16 dev eth3",
+        "17100 as to 17100 via inet 192.168.5.13 dev eth1"
+      ]
+    },
+    "Z": {
+      "": [
+        "10.200.200.1 nexthop  encap mpls  17100 via 192.168.8.15 dev eth2 weight 1 nexthop  encap mpls  17100 via 192.168.7.14 dev eth1 weight 1",
+        "10.200.200.2 encap mpls  17100 via 192.168.7.14 dev eth1",
+        "10.200.200.3 encap mpls  17100 via 192.168.8.15 dev eth2",
+        "10.200.200.4 via 192.168.7.14 dev eth1",
+        "10.200.200.5 via 192.168.8.15 dev eth2",
+        "192.168.1.0/24 via 192.168.7.14 dev eth1",
+        "192.168.2.0/24 via 192.168.8.15 dev eth2",
+        "192.168.3.0/24 nexthop via 192.168.8.15 dev eth2 weight 1 nexthop via 192.168.7.14 dev eth1 weight 1",
+        "192.168.4.0/24 via 192.168.7.14 dev eth1",
+        "192.168.5.0/24 via 192.168.8.15 dev eth2",
+        "192.168.6.0/24 nexthop via 192.168.8.15 dev eth2 weight 1 nexthop via 192.168.7.14 dev eth1 weight 1"
+      ],
+      "-M": [
+        "5000 via inet 192.168.7.14 dev eth1",
+        "5001 via inet 192.168.7.14 dev eth1",
+        "5002 via inet 192.168.8.15 dev eth2",
+        "5003 via inet 192.168.8.15 dev eth2",
+        "17100 nexthop as to 17100 via inet 192.168.7.14 dev eth1 nexthop as to 17100 via inet 192.168.8.15 dev eth2"
+      ]
+    }
+}
+
+
