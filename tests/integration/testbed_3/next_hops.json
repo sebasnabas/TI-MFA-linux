@@ -1,0 +1,74 @@
+{
+    "A": [
+        "id 28 dev eth1 proto zebra",
+        "id 43 dev eth2 proto zebra",
+        "id 42 group 28/43 proto zebra",
+        "id 80  encap mpls  17100 via 192.168.1.12 dev eth1 proto zebra",
+        "id 84 dev eth1 proto zebra",
+        "id 85 dev eth2 proto zebra",
+        "id 89  encap mpls  17100 via 192.168.2.13 dev eth2 proto zebra",
+        "id 90 group 80/89 proto zebra"
+    ],
+    "B": [
+        "id 34 dev eth1 proto zebra",
+        "id 43 dev eth2 proto zebra",
+        "id 42 group 34/43 proto zebra",
+        "id 55 dev eth3 proto zebra",
+        "id 74 group 43/55 proto zebra",
+        "id 94  encap mpls  17100 via 192.168.4.14 dev eth3 proto zebra",
+        "id 100 dev eth2 proto zebra",
+        "id 102  encap mpls  17100 via 192.168.3.13 dev eth2 proto zebra",
+        "id 101 group 94/102 proto zebra",
+        "id 103 dev eth3 proto zebra",
+        "id 104 dev eth1 proto zebra"
+    ],
+    "C": [
+        "id 39 dev eth1 proto zebra",
+        "id 40 dev eth2 proto zebra",
+        "id 38 group 39/40 proto zebra",
+        "id 63 dev eth3 proto zebra",
+        "id 74 group 40/63 proto zebra",
+        "id 93  encap mpls  17100 via 192.168.3.12 dev eth2 proto zebra",
+        "id 94  encap mpls  17100 via 192.168.5.15 dev eth3 proto zebra",
+        "id 92 group 93/94 proto zebra",
+        "id 97 dev eth2 proto zebra",
+        "id 99 dev eth3 proto zebra",
+        "id 100 dev eth1 proto zebra"
+    ],
+    "D": [
+        "id 34  encap mpls  17100 via 192.168.4.12 dev eth1 proto zebra",
+        "id 36 dev eth1 proto zebra",
+        "id 52 dev eth2 proto zebra",
+        "id 51 group 36/52 proto zebra",
+        "id 64 dev eth3 proto zebra",
+        "id 65 group 52/64 proto zebra",
+        "id 66 dev eth1 proto zebra",
+        "id 68  encap mpls  17100 via 192.168.6.15 dev eth2 proto zebra",
+        "id 67 group 34/68 proto zebra",
+        "id 69 dev eth3 proto zebra",
+        "id 70 dev eth2 proto zebra"
+    ],
+    "E": [
+        "id 34  encap mpls  17100 via 192.168.5.13 dev eth1 proto zebra",
+        "id 36 dev eth1 proto zebra",
+        "id 49 dev eth2 proto zebra",
+        "id 48 group 36/49 proto zebra",
+        "id 56  encap mpls  17100 via 192.168.6.14 dev eth2 proto zebra",
+        "id 62 group 34/56 proto zebra",
+        "id 63 dev eth1 proto zebra",
+        "id 65 dev eth2 proto zebra",
+        "id 66 dev eth3 proto zebra",
+        "id 68 dev eth3 proto zebra",
+        "id 67 group 49/68 proto zebra"
+    ],
+    "Z": [
+        "id 28 encap mpls  17100 via 192.168.7.14 dev eth1 proto zebra",
+        "id 30 dev eth1 proto zebra",
+        "id 36 dev eth1 proto zebra",
+        "id 40 encap mpls  17100 via 192.168.8.15 dev eth2 proto zebra",
+        "id 39 group 28/40 proto zebra",
+        "id 41 dev eth2 proto zebra",
+        "id 42 dev eth2 proto zebra",
+        "id 43 group 30/42 proto zebra"
+    ]
+}

@@ -3,6 +3,9 @@ require 'json'
 file = File.read('network_config.json')
 vm_network_config = JSON.parse(file)['Links']
 
+file = File.read('next_hops.json')
+vm_next_hops = JSON.parse(file)
+
 file = File.read('static_routes.json')
 vm_static_routes = JSON.parse(file)
 
@@ -85,6 +88,12 @@ Vagrant.configure("2") do |config|
 
       if enabled_igp != ""
         next
+      end
+
+      next_hops = vm_next_hops[machine_id]
+      Array(next_hops).each do |hop|
+        command = "sudo ip nexthop add #{hop}"
+        machine.vm.provision "shell", inline: command
       end
 
       vm_static_routes[machine_id].each do |options, static_routes|
