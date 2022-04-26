@@ -20,6 +20,6 @@ install: all
 clean:
 	make -C $(KERNELDIR) M=$(PWD) clean
 
-compile_commands.json: $(GEN_COMPILE_COMMANDS)
+compile_commands.json: all $(GEN_COMPILE_COMMANDS)
 	python3 $(GEN_COMPILE_COMMANDS) -O $(KERNELDIR) $(PWD)
 	mv compile_commands.json ../../
