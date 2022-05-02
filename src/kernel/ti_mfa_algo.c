@@ -132,6 +132,7 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
 
     next_hop = kmalloc(sizeof(struct ti_mfa_nh), GFP_KERNEL);
 
+    /* TODO: Check if neighbor exists <02-05-22> */
     next_hop->dev = next_mpls_hop->nh_dev;
     next_hop->labels = next_mpls_hop->nh_labels;
     memmove(next_hop->label, next_mpls_hop->nh_label, sizeof(*(next_mpls_hop->nh_label)));
