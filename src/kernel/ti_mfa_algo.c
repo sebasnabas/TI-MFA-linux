@@ -563,7 +563,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
         link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     }
 
-    pr_debug("Destination: %u, Label Stack: (%u)\n", destination.label, mpls_label_count);
+    pr_debug("Label Stack: (%u Labels)\n", mpls_label_count);
     for (i = 0; i < mpls_label_count; i++)
     {
         pr_debug("\t%d Label: %u %s\n", i, label_stack[i].label, label_stack[i].bos ? "[S]" : "");
