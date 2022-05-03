@@ -203,6 +203,52 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
 
         reroute_count++;
     }
+    /* Step 1) for local  link failures */
+    for (index = 0; index < next_hop->link_failure_count; ++index) {
+        struct ti_mfa_link failed_link = ti_mfa_hdr_to_link(next_hop->link_failures[index]);
+
+        /* Step 1.1 */
+        struct ti_mfa_route *found_rt = rt_lookup(failed_link);
+        if (!found_rt)
+            continue;
+
+        /* Step 1.2 */
+        rt = mpls_route_input_rcu(net, found_rt->destination_label);
+        if (!rt) {
+            pr_err("No route found\n");
+            continue;
+        }
+
+        pr_debug("Found backup route for link_failure: %pM-%pM: dest: %u\n",
+                found_rt->link.source, found_rt->link.dest, found_rt->destination_label);
+
+        /* Use number of hops as metric. I didn't find any route preference metric for mpls */
+        if (rt->rt_nhn < hop_min) {
+            struct net_device *out_dev_tmp = NULL;
+
+            pr_debug("Looking up next hop to label %u\n", found_rt->destination_label);
+
+            tmp_nh = get_failure_free_next_hop(net, found_rt->destination_label,
+                                               next_hop->link_failure_count, next_hop->link_failures,
+                                               link_failure_count, link_failures);
+
+            if (tmp_nh == NULL) {
+                pr_debug("Couldn't find a failure free nexthop for backup route\n");
+                continue;
+            }
+
+            out_dev_tmp = dev_get_by_name(net, found_rt->out_dev_name);
+            if (mpls_output_possible(out_dev_tmp))
+                out_dev = out_dev_tmp;
+
+            pr_debug("Found backup route to label %u via dev %s\n",
+                    found_rt->destination_label, out_dev->name);
+
+            hop_min = rt->rt_nhn;
+        }
+
+        reroute_count++;
+    }
 
     /* Ignore destination route if there's a needed backup route */
     if (reroute_count == 0)
