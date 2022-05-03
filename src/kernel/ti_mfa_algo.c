@@ -256,15 +256,18 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
                                            next_hop->link_failure_count, next_hop->link_failures,
                                            link_failure_count, link_failures);
 
-    if (tmp_nh == NULL)
-    {
-        pr_debug("No next hop found\n");
-        error = -1;
-        goto out_free;
-    }
-
     if (out_dev)
         tmp_nh->dev = out_dev;
+
+    if (tmp_nh == NULL)
+    {
+        pr_debug("No next hop found. Sending packet back\n");
+        tmp_nh = kmalloc(sizeof(struct ti_mfa_nh), GFP_KERNEL);
+        tmp_nh->label[0] = original_destination;
+        tmp_nh->labels = 1;
+        tmp_nh->dev = NULL;
+        eth_zero_addr(tmp_nh->ha);
+    }
 
     next_hop->dev = tmp_nh->dev;
     next_hop->labels = tmp_nh->labels;
@@ -273,9 +276,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
 
     debug_print_next_hop(*next_hop);
 
-out_free:
-    if (tmp_nh)
-        kfree(tmp_nh);
+    kfree(tmp_nh);
 
     return error;
 }
@@ -574,6 +575,13 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
         goto out_error;
+
+    if (next_hop.dev == NULL && is_zero_ether_addr(next_hop.ha)) {
+        /* No next hop was found, so we're sending the packet back */
+        next_hop.dev = skb->dev;
+        ether_addr_copy(next_hop.ha, ethh.h_source);
+        pr_debug("Sending packet back to %pM via dev %s\n", next_hop.ha, next_hop.dev->name);
+    }
 
     if (next_hop.link_failure_count > 0) {
         pr_debug("Found local link failures -> Not doing PHP\n");
