@@ -262,12 +262,15 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
     if (tmp_nh == NULL)
     {
         pr_debug("No next hop found. Sending packet back\n");
+        pr_debug("ERROR OUT\n"); return -1;
         tmp_nh = kmalloc(sizeof(struct ti_mfa_nh), GFP_KERNEL);
+    kfree(tmp_nh); pr_debug("ERROR OUT\n"); return -1;
         tmp_nh->label[0] = original_destination;
         tmp_nh->labels = 1;
         tmp_nh->dev = NULL;
         eth_zero_addr(tmp_nh->ha);
     }
+    kfree(tmp_nh); pr_debug("ERROR OUT\n"); return -1;
 
     next_hop->dev = tmp_nh->dev;
     next_hop->labels = tmp_nh->labels;
@@ -576,6 +579,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
         goto out_error;
 
+    pr_debug("DEBUG: error out\n"); goto out_error;
     if (next_hop.dev == NULL && is_zero_ether_addr(next_hop.ha)) {
         /* No next hop was found, so we're sending the packet back */
         next_hop.dev = skb->dev;
