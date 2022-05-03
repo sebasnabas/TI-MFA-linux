@@ -32,9 +32,10 @@
         "192.168.8.0/24 nexthop via 192.168.3.13 dev eth2 weight 1 nexthop via 192.168.4.14 dev eth3 weight 1"
       ],
       "-M": [
-          "1200 dev lo",
-          "1100 as to 1100 via inet 192.168.1.11 dev eth1",
-          "1600 as to 1600 via inet 192.168.4.14 dev eth3"
+        "1200 dev lo",
+        "1100 as to 1100 via inet 192.168.1.11 dev eth1",
+        "1400 as to 1400 via inet 192.168.4.14 dev eth3",
+        "1600 as to 1600 via inet 192.168.4.14 dev eth3"
       ]
     },
     "C": {
@@ -51,9 +52,10 @@
         "192.168.8.0/24 via 192.168.5.15 dev eth3"
       ],
       "-M": [
-          "1300 dev lo",
-          "1100 as to 1100 via inet 192.168.2.11 dev eth1",
-          "1600 as to 1600 via inet 192.168.5.15 dev eth3"
+        "1300 dev lo",
+        "1100 as to 1100 via inet 192.168.2.11 dev eth1",
+        "1500 as to 1500 via inet 192.168.5.15 dev eth3",
+        "1600 as to 1600 via inet 192.168.5.15 dev eth3"
       ]
     },
     "D": {
@@ -72,6 +74,7 @@
       "-M": [
         "1400 dev lo",
         "1100 as to 1100 via inet 192.168.4.12 dev eth1",
+        "1200 as to 1200 via inet 192.168.4.12 dev eth1",
         "1600 as to 1600 via inet 192.168.7.16 dev eth3"
       ]
     },
@@ -89,9 +92,10 @@
         "192.168.7.0/24 nexthop via 192.168.6.14 dev eth2 weight 1 nexthop via 192.168.8.16 dev eth3 weight 1"
       ],
       "-M": [
-          "1500 dev lo",
-          "1100 as to 1100 via inet 192.168.5.13 dev eth1",
-          "1600 as to 1600 via inet 192.168.8.16 dev eth3"
+        "1500 dev lo",
+        "1100 as to 1100 via inet 192.168.5.13 dev eth1",
+        "1300 as to 1300 via inet 192.168.5.13 dev eth1",
+        "1600 as to 1600 via inet 192.168.8.16 dev eth3"
       ]
     },
     "Z": {
