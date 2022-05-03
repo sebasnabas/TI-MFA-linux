@@ -106,6 +106,58 @@ exit:
     return exit_code;
 }
 
+static unsigned int timfa_ingress_hook(void *priv, struct sk_buff *skb,
+                                       const struct nf_hook_state *state)
+{
+    unsigned int exit_code = NF_ACCEPT;
+    struct mpls_shim_hdr *hdr;
+    struct mpls_entry_decoded mpls_entry;
+
+    if (!eth_p_mpls(skb->protocol))
+    {
+        goto exit;
+    }
+
+    if (!pskb_may_pull(skb, sizeof(*hdr)))
+    {
+        goto exit;
+
+    }
+
+    hdr = mpls_hdr(skb);
+
+    if (hdr == NULL)
+    {
+        goto exit;
+    }
+
+    mpls_entry = mpls_entry_decode(hdr);
+    pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
+
+    switch(run_ti_mfa_ingress(state->net, skb))
+    {
+        case TI_MFA_SUCCESS:
+            exit_code = NF_STOLEN;
+            break;
+
+        case TI_MFA_ERROR:
+            pr_debug("ti-mfa failed on [%s]. Dropping...\n", skb->dev->name);
+            exit_code = NF_DROP;
+            break;
+
+        /* Handling TI_MFA_PASS */
+        default:
+            exit_code = NF_ACCEPT;
+            break;
+    }
+
+    if (exit_code == NF_STOLEN)
+        kfree_skb(skb);
+
+exit:
+    return exit_code;
+}
+
 static int initialize_hooks(void)
 {
     int return_code;
@@ -125,9 +177,9 @@ static int initialize_hooks(void)
 
     while (dev)
     {
-        // START Egress
-        timfa_hooks[i].hook = timfa_egress_hook;
-        timfa_hooks[i].hooknum = NF_NETDEV_EGRESS;
+        // START Ingress
+        timfa_hooks[i].hook = timfa_ingress_hook;
+        timfa_hooks[i].hooknum = NF_NETDEV_INGRESS;
         timfa_hooks[i].pf = NFPROTO_NETDEV;
         timfa_hooks[i].priority = NF_IP_PRI_LAST;
         timfa_hooks[i].dev = dev;
@@ -136,13 +188,12 @@ static int initialize_hooks(void)
 
         if (return_code < 0)
         {
-            pr_err("Registering egress hook failed for device %s, with %d\n", dev->name, return_code);
+            pr_err("Registering ingress hook failed for device %s, with %d\n", dev->name, return_code);
             return return_code;
         }
 
-        pr_debug("TI-MFA egress hook successfully registered on device: %s!\n", dev->name);
+        pr_debug("TI-MFA ingress hook successfully registered on device: %s!\n", dev->name);
         i++;
-        // END Egress
 
         dev = next_net_device(dev);
     }
