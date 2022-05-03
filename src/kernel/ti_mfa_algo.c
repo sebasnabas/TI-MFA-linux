@@ -671,15 +671,13 @@ void ti_mfa_ifdown(struct net_device *dev)
                     break;
             }
 
-            if (neigh == NULL || is_zero_ether_addr(neigh->ha) || neigh->dev != dev)
-                continue;
-
             if (number_of_deleted_neighs > 0 && number_of_deleted_neighs % DELETED_NEIGHS_INITIAL_SIZE == 0) {
                 pr_err("Not enough space in deleted neighbor array. Len: %u\n", number_of_deleted_neighs);
                 break;
             }
 
-            pr_debug("nh: %pM", neigh->ha);
+            if (!(neigh == NULL || is_zero_ether_addr(neigh->ha) || neigh->dev != dev))
+                pr_debug("nh: %pM", neigh->ha);
 
             for (i = 0; i < tmp; i++) {
                 if (deleted_neighs[i] == NULL)
@@ -722,7 +720,12 @@ void ti_mfa_ifdown(struct net_device *dev)
                 deleted_neighs[tmp] = kzalloc(sizeof(struct ti_mfa_neigh), GFP_KERNEL);
                 deleted_neighs[tmp]->net = net;
                 deleted_neighs[tmp]->dev = nh->nh_dev;
-                ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
+
+                if (neigh == NULL || is_zero_ether_addr(neigh->ha) || neigh->dev != dev)
+                    eth_zero_addr(deleted_neighs[tmp]->ha);
+                else
+                    ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
+
                 for (j = 0; j < nh->nh_labels; j++) {
                     uint index = j + deleted_neighs[tmp]->label_count;
                     uint k = 0;
