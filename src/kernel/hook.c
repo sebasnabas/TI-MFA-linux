@@ -55,57 +55,6 @@ static struct notifier_block ti_mfa_dev_notifier = {
     .notifier_call = ti_mfa_notify,
 };
 
-static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
-                              const struct nf_hook_state * state)
-{
-    unsigned int exit_code = NF_ACCEPT;
-    struct mpls_shim_hdr *hdr;
-    struct mpls_entry_decoded mpls_entry;
-
-    if (!eth_p_mpls(skb->protocol))
-    {
-        goto exit;
-    }
-
-    if (!pskb_may_pull(skb, sizeof(*hdr)))
-    {
-        goto exit;
-
-    }
-
-    hdr = mpls_hdr(skb);
-
-    if (hdr == NULL)
-    {
-        goto exit;
-    }
-
-    mpls_entry = mpls_entry_decode(hdr);
-    pr_debug("[%s]:[%s] EGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
-
-    switch(run_ti_mfa(state->net, skb))
-    {
-        case TI_MFA_SUCCESS:
-            exit_code = NF_STOLEN;
-            break;
-
-        case TI_MFA_ERROR:
-            pr_debug("ti-mfa failed on [%s]. Dropping...\n", skb->dev->name);
-            exit_code = NF_DROP;
-            break;
-
-        /* Handling TI_MFA_PASS */
-        default:
-            break;
-    }
-
-    if (exit_code == NF_STOLEN)
-        kfree_skb(skb);
-
-exit:
-    return exit_code;
-}
-
 static unsigned int timfa_ingress_hook(void *priv, struct sk_buff *skb,
                                        const struct nf_hook_state *state)
 {
