@@ -6,6 +6,15 @@
 
 #include "mpls.h"
 #include "ti_mfa.h"
+#include "utils.h"
+
+static void add_mpls_labels(char *msg, uint label_count, const struct mpls_entry_decoded entries[])
+{
+    uint i = 0;
+    for (i = 0; i < label_count; ++i) {
+        sprintf(msg+ strlen(msg), "\t\t %u: %u\n", i, entries[i].label);
+    }
+}
 
 bool is_not_mpls(struct sk_buff *skb)
 {
@@ -39,6 +48,19 @@ uint get_number_of_mpls_capable_net_devices(struct net *net)
 
     return net_device_count;
 }
+
+void debug_print_mpls_entries(uint label_count, const struct mpls_entry_decoded labels[])
+{
+    char msg[1024];
+    memset(msg, 0, sizeof(msg));
+
+    sprintf(msg, "\nLabels:\n");
+
+    add_mpls_labels(msg, label_count, labels);
+
+    pr_debug("%s", msg);
+}
+
 
 /* Step 1): Decode mpls labels, remove them from header and save them
 */

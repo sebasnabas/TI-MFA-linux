@@ -524,7 +524,6 @@ out_free:
 int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 {
     bool php = false;
-    int i = 0;
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
     struct mpls_entry_decoded destination;
@@ -567,10 +566,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     }
 
     pr_debug("Label Stack: (%u Labels)\n", mpls_label_count);
-    for (i = 0; i < mpls_label_count; i++)
-    {
-        pr_debug("\t%d Label: %u %s\n", i, label_stack[i].label, label_stack[i].bos ? "[S]" : "");
-    }
+    debug_print_mpls_entries(mpls_label_count, label_stack);
 
     rcu_read_lock();
 
