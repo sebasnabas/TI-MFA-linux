@@ -699,7 +699,7 @@ int run_ti_mfa_ingress(struct net *net, struct sk_buff *skb)
     struct mpls_shim_hdr *hdr;
     struct mpls_entry_decoded mpls_entry;
     struct mpls_route *rt = NULL;
-    bool no_nexthop = true;
+    bool no_nexthop = false;
 
     if (is_not_mpls(skb))
     {
@@ -731,7 +731,8 @@ int run_ti_mfa_ingress(struct net *net, struct sk_buff *skb)
         debug_print_labels(nh->nh_labels, nh->nh_label);
 
         if (nh_flags & (RTNH_F_DEAD | RTNH_F_LINKDOWN)) {
-            no_nexthop = no_nexthop && true;
+            no_nexthop = no_nexthop || true;
+            pr_debug("DEAD\n");
         }
 
     } endfor_nexthops(rt);
