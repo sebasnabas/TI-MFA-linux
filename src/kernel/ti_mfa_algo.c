@@ -80,6 +80,7 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
     struct mpls_nh *next_mpls_hop = NULL;
     struct ti_mfa_nh *next_hop  = NULL;
     int nh_index = 0;
+    u8 ha_buf[MAX_ADDR_LEN];
 
     rt = mpls_route_input_rcu(net, destination);
     if (!rt) {
@@ -103,13 +104,18 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
                 break;
         }
 
-        pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, neigh->ha);
+        if (neigh == NULL)
+            continue;
+
+        memcpy(ha_buf, neigh->ha, nh_dev->addr_len);
+
+        pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, ha_buf);
         debug_print_labels(nh->nh_labels, nh->nh_label);
 
-        if (is_link_failure(neigh->ha, local_link_failure_count, local_link_failures)
-            || is_link_failure(neigh->ha, link_failure_count, link_failures)) {
+        if (is_link_failure(ha_buf, local_link_failure_count, local_link_failures)
+            || is_link_failure(ha_buf, link_failure_count, link_failures)) {
 
-            pr_debug("Not using this next hop, since there's a link failure for %pM\n", neigh->ha);
+            pr_debug("Not using this next hop, since there's a link failure for %pM\n", ha_buf);
             continue;
         }
 
@@ -136,7 +142,7 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
     next_hop->dev = next_mpls_hop->nh_dev;
     next_hop->labels = next_mpls_hop->nh_labels;
     memmove(next_hop->label, next_mpls_hop->nh_label, sizeof(*(next_mpls_hop->nh_label)));
-    ether_addr_copy(next_hop->ha, neigh->ha);
+    ether_addr_copy(next_hop->ha, ha_buf);
 
     return next_hop;
 }
@@ -203,6 +209,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
 
         reroute_count++;
     }
+
     /* Step 1) for local  link failures */
     for (index = 0; index < next_hop->link_failure_count; ++index) {
         struct ti_mfa_link failed_link = ti_mfa_hdr_to_link(next_hop->link_failures[index]);
@@ -289,6 +296,7 @@ void set_local_link_failures(const struct net *net,
         u32 destination, struct ti_mfa_nh *next_hop)
 {
     uint i = 0, link_failures = 0;
+
     for (i = 0; i < number_of_deleted_neighs; i++) {
         struct ti_mfa_neigh *neigh = deleted_neighs[i];
         uint j = 0;
