@@ -113,8 +113,12 @@
         "192.168.6.0/24 nexthop via 192.168.8.15 dev eth2 weight 1 nexthop via 192.168.7.14 dev eth1 weight 1"
       ],
       "-M": [
-        "1600 dev lo",
-        "1100 nexthop via inet 192.168.8.15 dev eth2 nexthop via inet 192.168.7.14 dev eth1"
+        "1100 nexthop via inet 192.168.8.15 dev eth2 nexthop via inet 192.168.7.14 dev eth1",
+        "1200 as to 1400 via inet 192.168.7.14 dev eth1",
+        "1300 as to 1300 via inet 192.168.8.15 dev eth2",
+        "1400 as to 1400 via inet 192.168.7.14 dev eth1",
+        "1500 as to 1500 via inet 192.168.8.15 dev eth2",
+        "1600 dev lo"
       ]
     }
 }
