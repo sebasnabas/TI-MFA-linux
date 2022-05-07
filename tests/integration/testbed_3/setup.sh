@@ -2,7 +2,12 @@
 
 pushd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
-vagrant up "$1"
+if [[ "${1:-null}" != null ]]
+then
+    vagrant up "$1"
+else
+    vagrant up
+fi
 
 machine_neighbor_pairs=$(jq -r '.Neighbours | to_entries | .[] | .key as $machine | .value | map($machine + "=" + .) | .[]' network_config.json)
 
