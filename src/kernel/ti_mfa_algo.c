@@ -376,7 +376,7 @@ bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[], const
 */
 int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded orig_label_path[], unsigned int orig_label_count,
                         const struct ti_mfa_nh *nh, const struct ti_mfa_shim_hdr link_failures[], unsigned int link_failure_count,
-                        bool flush_link_failure_stack, bool php)
+                        bool flush_link_failure_stack)
 {
     int error = 0;
     int i, j, headroom, new_header_size;
@@ -408,19 +408,9 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         }
     }
 
-    /* Set destination if not Penultimate hop popping because of failures,
-     * but we'd on the last hop before destination without failures
-     * */
-    if (!php && label_count == 0) {
-        new_label_stack[0] = orig_label_path[0];
-        label_count++;
-    }
-
     if (link_failure_count > 0)
     {
         /* +1 for extension label */
-        label_count++;
-        /* +1 for backup destination */
         label_count++;
     }
 
@@ -494,11 +484,6 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     if (link_failure_count > 0)
     {
         label_count--;
-        pr_debug("Setting backup destination label. Label count = %u", label_count);
-        pr_debug("%u pushing Label: %u %s", label_count, new_label_stack[0].label, bos ? "[S]" : "");
-        mpls_h[label_count] = mpls_entry_encode(new_label_stack[0].label, new_label_stack[0].ttl, new_label_stack[0].tc, bos);
-
-        label_count--;
         pr_debug("Setting ti-mfa mpls extension shim hdr. Remaining label count = %u\n", label_count);
         mpls_h[label_count] = TI_MFA_MPLS_EXTENSION_HDR;
         bos = false;
@@ -532,7 +517,6 @@ out_free:
 */
 int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 {
-    bool php = false;
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
     struct mpls_entry_decoded destination;
@@ -553,23 +537,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     destination = label_stack[mpls_label_count - 1];
     if (destination.label == TI_MFA_MPLS_EXTENSION_LABEL) {
-        struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
-
-        pr_debug("Got ti-mfa extension label\n");
-        pr_debug("Popping backup destination label\n");
-
-        /* Penultimate hop popping -> Pop backup destination label */
-        if (mpls_label_count == 1) {
-            pr_debug("=> Would be Penultimate hop popping\n");
-            label_stack[0] = mpls_entry_decode(mpls_hdr_entry);
-            php = true;
-        }
-        else {
-            mpls_label_count--;
-        }
-        skb_pull(skb, sizeof(*mpls_hdr_entry));
-        skb_reset_network_header(skb);
-
+        mpls_label_count--;
         destination = label_stack[mpls_label_count - 1];
         link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     }
@@ -591,41 +559,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
         pr_debug("Sending packet back to %pM via dev %s\n", next_hop.ha, next_hop.dev->name);
     }
 
-    if (next_hop.link_failure_count > 0) {
-        pr_debug("Found local link failures -> Not doing PHP\n");
-        php = false;
-    }
-
-    /* Penultimate hop popping -> set skb->protocol to IP proto */
-    if (php) {
-        enum mpls_payload_type payload_type;
-
-        if (!pskb_may_pull(skb, 12)) {
-            pr_err("Cannot pull ip header\n");
-            goto out_error;
-        }
-
-        payload_type = ip_hdr(skb)->version;
-
-        pr_debug("Found no local link failures -> Penultimate hop popping\n");
-        pr_debug("Payload type: %d\n", payload_type);
-
-        switch(payload_type) {
-            case MPT_IPV4: {
-                skb->protocol = htons(ETH_P_IP);
-                break;
-            }
-            case MPT_IPV6: {
-                skb->protocol = htons(ETH_P_IPV6);
-                break;
-            }
-            default:
-                pr_err("Unspec\n");
-                skb->protocol = htons(ETH_P_IP);
-                break;
-        }
-    }
-    else if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count, false, php) != 0)
+    if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count, false) != 0)
         goto out_error;
 
     rcu_read_unlock();
