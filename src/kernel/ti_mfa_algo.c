@@ -28,11 +28,11 @@ static uint number_of_deleted_neighs;
 uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max)
 {
     uint count = 0;
-        struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
+    struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
     do {
         memmove(&link_failures[count], &link_failure_entry[count], sizeof(struct ti_mfa_shim_hdr));
 
-        pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM %s\n", link_failures[count].node_source, link_failures[count].link_source, link_failures[count].link_dest, link_failures[count].bos ? "[S]" : "");
+        pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM %s\n", link_failures[count].node_source, link_failures[count].link.source, link_failures[count].link.dest, link_failures[count].bos ? "[S]" : "");
         count++;
 
         if (count > max)
@@ -56,12 +56,12 @@ static bool is_link_failure(const unsigned char addr[], const uint link_failure_
     for (i = 0; i < link_failure_count; i++) {
         struct ti_mfa_shim_hdr link_failure = link_failures[i];
 
-        if (ether_addr_equal(addr, link_failure.link_source)
-            || ether_addr_equal(addr, link_failure.link_dest)
+        if (ether_addr_equal(addr, link_failure.link.source)
+            || ether_addr_equal(addr, link_failure.link.dest)
             || ether_addr_equal(addr, link_failure.node_source)) {
 
             pr_debug("Found neighbor with broken link [%pM] == [src: %pM | dest: %pM] skipping...\n",
-                     addr, link_failure.link_source, link_failure.link_dest);
+                     addr, link_failure.link.source, link_failure.link.dest);
             return true;
         }
     }
@@ -334,13 +334,13 @@ void set_local_link_failures(const struct net *net,
         if (link_failure_found)
             continue;
 
-        ether_addr_copy(next_hop->link_failures[link_failures].link_source, neigh->dev->dev_addr);
-        ether_addr_copy(next_hop->link_failures[link_failures].link_dest, neigh->ha);
+        ether_addr_copy(next_hop->link_failures[link_failures].link.source, neigh->dev->dev_addr);
+        ether_addr_copy(next_hop->link_failures[link_failures].link.dest, neigh->ha);
 
         /* Setting link_failures[]->node_source to empty, because it's the same for all of them */
         eth_zero_addr(next_hop->link_failures[link_failures].node_source);
 
-        pr_debug("Adding link failure from %pM to %pM for label %u\n", next_hop->link_failures[link_failures].link_source, next_hop->link_failures[link_failures].link_dest, destination);
+        pr_debug("Adding link failure from %pM to %pM for label %u\n", next_hop->link_failures[link_failures].link.source, next_hop->link_failures[link_failures].link.dest, destination);
         link_failures++;
     }
     next_hop->link_failure_count = link_failures;
@@ -358,7 +358,7 @@ bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[], const
         ether_addr_copy(hdr[i].node_source, dev->dev_addr);
 
         bos = false;
-        pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM%s\n", i, hdr[i].node_source, hdr[i].link_source, hdr[i].link_dest, hdr[i].bos ? " [S]" : "");
+        pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM%s\n", i, hdr[i].node_source, hdr[i].link.source, hdr[i].link.dest, hdr[i].bos ? " [S]" : "");
     }
 
     return bos;

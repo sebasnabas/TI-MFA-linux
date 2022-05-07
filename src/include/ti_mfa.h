@@ -23,8 +23,7 @@ struct ti_mfa_route {
 };
 
 struct ti_mfa_shim_hdr {
-    unsigned char link_source[ETH_ALEN];
-    unsigned char link_dest[ETH_ALEN];
+    struct ti_mfa_link link;
     unsigned char node_source[ETH_ALEN];
     u8            bos;
 };
@@ -54,8 +53,8 @@ static inline struct ti_mfa_shim_hdr *ti_mfa_hdr(const struct sk_buff *skb)
 static inline struct ti_mfa_link ti_mfa_hdr_to_link(const struct ti_mfa_shim_hdr hdr)
 {
     struct ti_mfa_link link;
-    ether_addr_copy(link.source, hdr.link_source);
-    ether_addr_copy(link.dest, hdr.link_dest);
+    ether_addr_copy(link.source, hdr.link.source);
+    ether_addr_copy(link.dest, hdr.link.dest);
     return link;
 }
 
