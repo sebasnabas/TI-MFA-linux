@@ -15,7 +15,6 @@
 
 uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max);
 int run_ti_mfa(struct net *net, struct sk_buff *skb);
-int run_ti_mfa_ingress(struct net *net, struct sk_buff *skb);
 void ti_mfa_ifdown(struct net_device *dev);
 void ti_mfa_ifup(const struct net_device *dev);
 int initialize_ti_mfa(void);

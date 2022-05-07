@@ -83,12 +83,7 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff *skb,
     mpls_entry = mpls_entry_decode(hdr);
     pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
 
-    /* if (strcmp(skb->dev->name, "eth3") == 0 && mpls_entry.label == 1100) { */
-    /*     pr_debug("Hardcoded accept\n"); */
-    /*     return NF_ACCEPT; */
-    /* } */
-
-    switch(run_ti_mfa_ingress(state->net, skb))
+    switch(run_ti_mfa(state->net, skb))
     {
         case TI_MFA_SUCCESS:
             exit_code = NF_STOLEN;

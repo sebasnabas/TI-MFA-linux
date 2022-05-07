@@ -631,61 +631,6 @@ int run_ti_mfa(struct net *net, struct sk_buff *skb)
     return return_code;
 }
 
-int run_ti_mfa_ingress(struct net *net, struct sk_buff *skb)
-{
-    int return_code = TI_MFA_ERROR;
-    struct mpls_shim_hdr *hdr;
-    struct mpls_entry_decoded mpls_entry;
-    struct mpls_route *rt = NULL;
-    bool no_nexthop = false;
-
-    if (is_not_mpls(skb))
-    {
-        return TI_MFA_PASS;
-    }
-
-    if (!pskb_may_pull(skb, sizeof(*hdr)))
-    {
-        goto exit;
-
-    }
-
-    hdr = mpls_hdr(skb);
-    if (hdr == NULL)
-    {
-        goto exit;
-    }
-
-    mpls_entry = mpls_entry_decode(hdr);
-    rt = mpls_route_input_rcu(net, mpls_entry.label);
-    if (!rt) {
-        pr_err("No route found\n");
-        goto exit;
-    }
-
-    for_nexthops(rt) {
-        unsigned int nh_flags = READ_ONCE(nh->nh_flags);
-
-        debug_print_labels(nh->nh_labels, nh->nh_label);
-
-        if (nh_flags & (RTNH_F_DEAD | RTNH_F_LINKDOWN)) {
-            no_nexthop = no_nexthop || true;
-            pr_debug("DEAD\n");
-        }
-
-    } endfor_nexthops(rt);
-
-    if (!no_nexthop)
-        return TI_MFA_PASS;
-
-    pr_debug("No alive nexthop found -> Executing ti-mfa\n");
-
-    return_code = run_ti_mfa(net, skb);
-
-exit:
-    return return_code;
-}
-
 void ti_mfa_ifdown(struct net_device *dev)
 {
     struct mpls_route __rcu **platform_label;
