@@ -71,6 +71,7 @@ uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_
     do {
         mpls_entries[label_count] = mpls_entry_decode(&mpls_hdr_entry[label_count]);
 
+        pr_debug("Label: %u %s\n", mpls_entries[label_count].label, mpls_entries[label_count].bos ? "[S]" : "");
         label_count++;
 
         if (label_count > max_labels)
@@ -79,8 +80,36 @@ uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_
         }
     } while (!mpls_entries[label_count - 1].bos);
 
-    skb_pull(skb, sizeof(struct mpls_shim_hdr) * label_count);
+    skb_pull(skb, sizeof(*mpls_hdr_entry) * label_count);
     skb_reset_network_header(skb);
 
     return label_count;
+}
+
+void set_mpls_header(struct sk_buff *skb, uint label_count, const struct mpls_entry_decoded new_label_stack[], bool add_extension_hdr)
+{
+    int i = 0;
+    bool bos = true;
+    struct mpls_shim_hdr *mpls_h;
+
+    /* Set new mpls header */
+    skb_push(skb, sizeof(*mpls_h) * label_count);
+    skb_reset_network_header(skb);
+    mpls_h = mpls_hdr(skb);
+
+    if (add_extension_hdr)
+    {
+        label_count--;
+        pr_debug("Setting ti-mfa mpls extension shim hdr. Remaining label count = %u\n", label_count);
+        mpls_h[label_count] = TI_MFA_MPLS_EXTENSION_HDR;
+        bos = false;
+    }
+
+    for (i = label_count - 1; i >= 0; i--) {
+        struct mpls_entry_decoded mpls_entry = new_label_stack[i];
+        mpls_h[i] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, bos);
+        pr_debug("%u: pushing label: %u%s\n", i, mpls_entry.label, bos ? "[S]" : "");
+
+        bos = false;
+    }
 }

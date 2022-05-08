@@ -43,6 +43,7 @@ struct ti_mfa_nh {
     u8                      link_failure_count;
     u32                     label[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr  link_failures[MAX_NEW_LABELS];
+    bool                    is_dest;
 };
 
 static inline struct ti_mfa_shim_hdr *ti_mfa_hdr(const struct sk_buff *skb)

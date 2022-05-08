@@ -41,7 +41,7 @@ uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_f
         }
     } while (!link_failures[count - 1].bos);
 
-    skb_pull(skb, sizeof(struct ti_mfa_shim_hdr) * count);
+    skb_pull(skb, sizeof(*link_failure_entry) * count);
     skb_reset_network_header(skb);
 
     return count;
@@ -79,8 +79,8 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
     struct neighbour *neigh  = NULL;
     struct mpls_nh *next_mpls_hop = NULL;
     struct ti_mfa_nh *next_hop  = NULL;
-    int nh_index = 0;
     u8 ha_buf[MAX_ADDR_LEN];
+    bool is_dest = false;
 
     rt = mpls_route_input_rcu(net, destination);
     if (!rt) {
@@ -88,48 +88,54 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
         return NULL;
     }
 
-    for_nexthops(rt) {
-        u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
-        struct net_device *nh_dev = nh->nh_dev;
+    if (rt->rt_nhn == 1) {
+        next_mpls_hop = rt->rt_nh;
+        is_dest = true;
+    } else {
+        int nh_index = 0;
+        for_nexthops(rt) {
+            u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
+            struct net_device *nh_dev = nh->nh_dev;
 
-        if (!nh_dev)
-            continue;
+            if (!nh_dev)
+                continue;
 
-        switch (nh->nh_via_table) {
-            case NEIGH_ARP_TABLE:
-                neigh = __ipv4_neigh_lookup_noref(nh_dev, neigh_index);
+            switch (nh->nh_via_table) {
+                case NEIGH_ARP_TABLE:
+                    neigh = __ipv4_neigh_lookup_noref(nh_dev, neigh_index);
+                    break;
+                default:
+                    // @TODO: Support for IPv6
+                    break;
+            }
+
+            if (neigh == NULL)
+                continue;
+
+            memcpy(ha_buf, neigh->ha, nh_dev->addr_len);
+
+            pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, ha_buf);
+            debug_print_labels(nh->nh_labels, nh->nh_label);
+
+            if (is_link_failure(ha_buf, local_link_failure_count, local_link_failures)
+                || is_link_failure(ha_buf, link_failure_count, link_failures)) {
+
+                pr_debug("Not using this next hop, since there's a link failure for %pM\n", ha_buf);
+                continue;
+            }
+
+            nh_index = nhsel;
+
+            next_mpls_hop = mpls_get_nexthop(rt, nh_index);
+
+            /* Ignore next hop if there's no route towards it */
+            if (next_mpls_hop == NULL)
+                continue;
+            /* If there's a route, just take the first next hop */
+            else
                 break;
-            default:
-                // @TODO: Support for IPv6
-                break;
-        }
-
-        if (neigh == NULL)
-            continue;
-
-        memcpy(ha_buf, neigh->ha, nh_dev->addr_len);
-
-        pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, ha_buf);
-        debug_print_labels(nh->nh_labels, nh->nh_label);
-
-        if (is_link_failure(ha_buf, local_link_failure_count, local_link_failures)
-            || is_link_failure(ha_buf, link_failure_count, link_failures)) {
-
-            pr_debug("Not using this next hop, since there's a link failure for %pM\n", ha_buf);
-            continue;
-        }
-
-        nh_index = nhsel;
-
-        next_mpls_hop = mpls_get_nexthop(rt, nh_index);
-
-        /* Ignore next hop if there's no route towards it */
-        if (next_mpls_hop == NULL)
-            continue;
-        /* If there's a route, just take the first next hop */
-        else
-            break;
-    } endfor_nexthops(rt);
+        } endfor_nexthops(rt);
+    }
 
     if (next_mpls_hop == NULL)
     {
@@ -143,6 +149,7 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
     next_hop->labels = next_mpls_hop->nh_labels;
     memmove(next_hop->label, next_mpls_hop->nh_label, sizeof(*(next_mpls_hop->nh_label)));
     ether_addr_copy(next_hop->ha, ha_buf);
+    next_hop->is_dest = is_dest;
 
     return next_hop;
 }
@@ -259,9 +266,9 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
 
     pr_debug("Found %d reroutes\n", reroute_count);
 
-    /* Ignore destination route if there's a needed backup route */
+    /* Look for destination route if there's no backup route */
     if (reroute_count == 0) {
-        pr_debug("Got 0 reroutes. Looking for next hop to original destination\n");
+        pr_debug("Got 0 reroutes. Looking for next hop to original destination %u\n", original_destination);
         tmp_nh = get_failure_free_next_hop(net, original_destination,
                                            next_hop->link_failure_count, next_hop->link_failures,
                                            link_failure_count, link_failures);
@@ -284,6 +291,13 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
     next_hop->labels = tmp_nh->labels;
     memmove(next_hop->label, tmp_nh->label, sizeof(*(tmp_nh->label)));
     ether_addr_copy(next_hop->ha, tmp_nh->ha);
+    next_hop->is_dest = tmp_nh->is_dest;
+
+    /* Add destination label if we do a detour */
+    if (reroute_count > 0 || (next_hop->labels == 0 && !next_hop->is_dest)) {
+        next_hop->label[next_hop->labels] = original_destination;
+        next_hop->labels++;
+    }
 
     debug_print_next_hop(*next_hop);
 
@@ -386,7 +400,6 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     struct mpls_entry_decoded *new_label_stack = kmalloc_array(max_labels, sizeof(struct mpls_entry_decoded), GFP_KERNEL);
     struct net_device *out_dev = nh->dev;
     struct ti_mfa_shim_hdr *ti_mfa_h;
-    struct mpls_shim_hdr *mpls_h;
     bool bos = false;
 
     if (!flush_link_failure_stack)
@@ -475,27 +488,7 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
         }
     }
 
-    /* Set new mpls header */
-    skb_push(skb, mpls_hdr_size);
-    skb_reset_network_header(skb);
-    mpls_h = mpls_hdr(skb);
-    bos = true;
-
-    if (link_failure_count > 0)
-    {
-        label_count--;
-        pr_debug("Setting ti-mfa mpls extension shim hdr. Remaining label count = %u\n", label_count);
-        mpls_h[label_count] = TI_MFA_MPLS_EXTENSION_HDR;
-        bos = false;
-    }
-
-    for (i = label_count - 1; i >= 0; i--) {
-        struct mpls_entry_decoded mpls_entry = new_label_stack[i];
-        mpls_h[i] = mpls_entry_encode(mpls_entry.label, mpls_entry.ttl, mpls_entry.tc, bos);
-        pr_debug("%u: pushing label: %u%s\n", i, mpls_entry.label, bos ? "[S]" : "");
-
-        bos = false;
-    }
+    set_mpls_header(skb, label_count, new_label_stack, link_failure_count > 0);
 
 out_free:
     kfree(new_label_stack);
@@ -552,6 +545,11 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
         goto out_error;
 
+    if (next_hop.is_dest && next_hop.labels == 0 && next_hop.link_failure_count == 0) {
+        pr_debug("Seems like the next hop is the destination and there are no link failures.\n");
+        goto out_pop;
+    }
+
     if (next_hop.dev == NULL && is_zero_ether_addr(next_hop.ha)) {
         /* No next hop was found, so we're sending the packet back */
         next_hop.dev = skb->dev;
@@ -571,7 +569,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     *neweth = ethh;
     neweth->h_proto = skb->protocol;
 
-    pr_debug("dest: %pM, src: %pM\n", ethh.h_dest, ethh.h_source);
+    pr_debug("Eth dest: %pM, src: %pM\n", ethh.h_dest, ethh.h_source);
     pr_debug("<== xmit via %s ==>\n", skb->dev->name);
 
     if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
@@ -592,6 +590,36 @@ out_success:
 out_retry:
     /* @TODO: add new link failure to header */
     return TI_MFA_RETRY;
+
+out_pop:
+    rcu_read_unlock();
+    return TI_MFA_POP;
+}
+
+static int pop_link_failure_stack(struct sk_buff *skb)
+{
+    int return_code = 0;
+    struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
+    struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
+    uint mpls_label_count = 0;
+    struct ethhdr ethh = *eth_hdr(skb);
+    struct ethhdr *neweth;
+
+    skb_pull(skb, sizeof(ethh));
+
+    mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
+    flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
+
+    if (label_stack[mpls_label_count - 1].label == TI_MFA_MPLS_EXTENSION_LABEL) {
+        mpls_label_count--;
+    }
+
+    set_mpls_header(skb, mpls_label_count, label_stack, false);
+
+    neweth = skb_push(skb, sizeof(ethh));
+    *neweth = ethh;
+
+    return return_code;
 }
 
 int run_ti_mfa(struct net *net, struct sk_buff *skb)
@@ -623,10 +651,23 @@ int run_ti_mfa(struct net *net, struct sk_buff *skb)
        return_code = __run_ti_mfa(net, new_skb);
     } while (return_code == TI_MFA_RETRY);
 
-    if (return_code == TI_MFA_ERROR)
+
+    if (return_code == TI_MFA_ERROR || return_code == TI_MFA_POP)
     {
         kfree_skb(new_skb);
     }
+
+    /* Remove link failures from current skb */
+    if (return_code == TI_MFA_POP) {
+        pr_debug("Removing link failures from skb\n");
+        if (pop_link_failure_stack(skb) != 0) {
+            return_code = TI_MFA_ERROR;
+        } else {
+            return_code = TI_MFA_PASS;
+        }
+    }
+    /* pr_err("ABORT\n"); return TI_MFA_ERROR; */
+
 
     return return_code;
 }
