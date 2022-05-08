@@ -532,6 +532,8 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     if (destination.label == TI_MFA_MPLS_EXTENSION_LABEL) {
         mpls_label_count--;
         destination = label_stack[mpls_label_count - 1];
+
+        skb_set_network_header(skb, -14);   /* Circumvent skip between mpls parsing and ti-mfa parsing */
         link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     }
 
