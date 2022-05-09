@@ -47,7 +47,7 @@ uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_f
     return count;
 }
 
-static bool is_link_failure(const unsigned char addr[], const uint link_failure_count, const struct ti_mfa_shim_hdr link_failures[])
+static bool is_link_failure(const struct ti_mfa_link link, const uint link_failure_count, const struct ti_mfa_shim_hdr link_failures[])
 {
     uint i = 0;
     /* Go through each link failure and
@@ -56,12 +56,20 @@ static bool is_link_failure(const unsigned char addr[], const uint link_failure_
     for (i = 0; i < link_failure_count; i++) {
         struct ti_mfa_shim_hdr link_failure = link_failures[i];
 
-        if (ether_addr_equal(addr, link_failure.link.source)
-            || ether_addr_equal(addr, link_failure.link.dest)
-            || ether_addr_equal(addr, link_failure.node_source)) {
+        bool src_on_failed_link = !is_zero_ether_addr(link.source) &&
+            (ether_addr_equal(link.source, link_failure.link.source)
+            || ether_addr_equal(link.source, link_failure.link.dest)
+            || ether_addr_equal(link.source, link_failure.node_source)
+            );
+        bool dest_on_failed_link = !is_zero_ether_addr(link.dest) &&
+            (ether_addr_equal(link.dest, link_failure.link.source)
+            || ether_addr_equal(link.dest, link_failure.link.dest)
+            || ether_addr_equal(link.dest, link_failure.node_source)
+            );
 
-            pr_debug("Found neighbor with broken link [%pM] == [src: %pM | dest: %pM] skipping...\n",
-                     addr, link_failure.link.source, link_failure.link.dest);
+        if (src_on_failed_link || dest_on_failed_link) {
+            pr_debug("Found neighbor with broken link [src: %pM | dest: %pM] == [src: %pM | dest: %pM] skipping...\n",
+                     link.source, link.dest, link_failure.link.source, link_failure.link.dest);
             return true;
         }
     }
@@ -79,7 +87,7 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
     struct neighbour *neigh  = NULL;
     struct mpls_nh *next_mpls_hop = NULL;
     struct ti_mfa_nh *next_hop  = NULL;
-    u8 ha_buf[MAX_ADDR_LEN];
+    struct ti_mfa_link nh_link;
     bool is_dest = false;
 
     rt = mpls_route_input_rcu(net, destination);
@@ -91,6 +99,18 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
     if (rt->rt_nhn == 1) {
         next_mpls_hop = rt->rt_nh;
         is_dest = true;
+
+        eth_zero_addr(nh_link.dest);
+        ether_addr_copy(nh_link.source, next_mpls_hop->nh_dev->dev_addr);
+
+        pr_debug("NH: dev: %s, mac: %pM\n", next_mpls_hop->nh_dev->name, nh_link.dest);
+
+        if (is_link_failure(nh_link, local_link_failure_count, local_link_failures)
+            || is_link_failure(nh_link, link_failure_count, link_failures)) {
+
+            pr_debug("Not using this next hop, since there's a link failure for %pM\n", nh_link.dest);
+            return NULL;
+        }
     } else {
         int nh_index = 0;
         for_nexthops(rt) {
@@ -112,15 +132,18 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
             if (neigh == NULL)
                 continue;
 
-            memcpy(ha_buf, neigh->ha, nh_dev->addr_len);
+            /* TODO: what if dev addr is not ethernet? */
+            ether_addr_copy(nh_link.dest, neigh->ha);
+            ether_addr_copy(nh_link.source, nh_dev->dev_addr);
 
-            pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, ha_buf);
+            pr_debug("NH: dev: %s, mac: %pM\n", nh_dev->name, nh_link.dest);
             debug_print_labels(nh->nh_labels, nh->nh_label);
 
-            if (is_link_failure(ha_buf, local_link_failure_count, local_link_failures)
-                || is_link_failure(ha_buf, link_failure_count, link_failures)) {
 
-                pr_debug("Not using this next hop, since there's a link failure for %pM\n", ha_buf);
+            if (is_link_failure(nh_link, local_link_failure_count, local_link_failures)
+                || is_link_failure(nh_link, link_failure_count, link_failures)) {
+
+                pr_debug("Not using this next hop, since there's a link failure for %pM\n", nh_link.dest);
                 continue;
             }
 
@@ -148,7 +171,7 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
     next_hop->dev = next_mpls_hop->nh_dev;
     next_hop->labels = next_mpls_hop->nh_labels;
     memmove(next_hop->label, next_mpls_hop->nh_label, sizeof(*(next_mpls_hop->nh_label)));
-    ether_addr_copy(next_hop->ha, ha_buf);
+    ether_addr_copy(next_hop->ha, nh_link.dest);
     next_hop->is_dest = is_dest;
 
     return next_hop;
