@@ -1,9 +1,18 @@
 ---
+# vim: ft=yaml.ansible
 - hosts: all
   become: true
   become_method: sudo
   gather_facts: true
   tasks:
+    - name: Stop and disable unattended-upgrades
+      # It holds /var/lib/dpkg/lock-frontend
+      # which prevents this script from installing packages sometimes
+      ansible.builtin.service:
+        name: unattended-upgrades
+        enabled: false
+        state: stopped
+
     - name: Add loopback interface
       ansible.builtin.shell:
         cmd: ip addr add "{{ loopback_ipv4_address }}" dev lo
@@ -26,6 +35,24 @@
         state: present
         sysctl_set: true
         reload: true
+
+    - name: Configure arp_announce
+      ansible.posix.sysctl:
+        name: "net.ipv4.conf.{{ item }}.arp_announce"
+        value: 2
+        state: present
+        sysctl_set: true
+        reload: true
+      loop: "{{ ansible_interfaces | reject('equalto', 'lo') | list  + ['default']}}"
+
+    - name: Configure arp_notify
+      ansible.posix.sysctl:
+        name: "net.ipv4.conf.{{ item }}.arp_notify"
+        value: 1
+        state: present
+        sysctl_set: true
+        reload: true
+      loop: "{{ ansible_interfaces | reject('equalto', 'lo') | list  + ['default']}}"
 
     - name: Configure and start OSPF with Segment Routing
       block:
