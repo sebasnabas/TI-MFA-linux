@@ -61,34 +61,27 @@ void debug_print_mpls_entries(uint label_count, const struct mpls_entry_decoded 
     pr_debug("%s", msg);
 }
 
+
 /* Step 1): Decode mpls labels, remove them from header and save them
 */
 uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels)
 {
-    uint label_count = 0, mpls_hdr_len = 0;
-    struct mpls_shim_hdr *mpls_hdr_entry;
-    for (label_count = 0; label_count < max_labels; label_count++) {
-        mpls_hdr_len += sizeof(*mpls_hdr_entry);
-        if (!pskb_may_pull(skb, mpls_hdr_len)) {
-            break;
-        }
-
-        mpls_hdr_entry = mpls_hdr(skb) + label_count;
-        mpls_entries[label_count] = mpls_entry_decode(mpls_hdr_entry);
+    uint label_count = 0;
+    struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
+    do {
+        mpls_entries[label_count] = mpls_entry_decode(&mpls_hdr_entry[label_count]);
 
         pr_debug("Label: %u %s\n", mpls_entries[label_count].label, mpls_entries[label_count].bos ? "[S]" : "");
-
-        if (!mpls_entries[label_count].bos)
-        {
-            continue;
-        }
-
         label_count++;
-        break;
-    }
 
-    /* skb_pull(skb, sizeof(*mpls_hdr_entry) * label_count); is not necessary, since we do a pskb_may_pull before: */
-    skb_set_network_header(skb, -2); /* We have correct an offset somehow */
+        if (label_count > max_labels)
+        {
+            break;
+        }
+    } while (!mpls_entries[label_count - 1].bos);
+
+    skb_pull(skb, sizeof(*mpls_hdr_entry) * label_count);
+    skb_reset_network_header(skb);
 
     return label_count;
 }

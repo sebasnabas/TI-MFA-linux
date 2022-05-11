@@ -27,32 +27,21 @@ static uint number_of_deleted_neighs;
 
 uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max)
 {
-    uint count = 0, hdr_len = 0;
-    struct ti_mfa_shim_hdr *link_failure_entry;
+    uint count = 0;
+    struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
+    do {
+        memmove(&link_failures[count], &link_failure_entry[count], sizeof(struct ti_mfa_shim_hdr));
 
-    for (count = 0; count < max; count++) {
-        hdr_len += sizeof(*link_failure_entry);
-        if (!pskb_may_pull(skb, hdr_len)) {
+        pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM %s\n", link_failures[count].node_source, link_failures[count].link.source, link_failures[count].link.dest, link_failures[count].bos ? "[S]" : "");
+        count++;
+
+        if (count > max)
+        {
             break;
         }
+    } while (!link_failures[count - 1].bos);
 
-        link_failure_entry = ti_mfa_hdr(skb) + count;
-        memmove(&link_failures[count], link_failure_entry, sizeof(*link_failure_entry));
-
-        pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM %s\n",
-                 link_failures[count].node_source, link_failures[count].link.source,
-                 link_failures[count].link.dest, link_failures[count].bos ? "[S]" : "");
-
-        if(!link_failures[count].bos) {
-            continue;
-        }
-
-        count++;
-        break;
-    }
-
-    pr_debug("Pulling %u header entries\n", count);
-    /* skb_pull(skb, sizeof(*link_failure_entry) * count); */
+    skb_pull(skb, sizeof(*link_failure_entry) * count);
     skb_reset_network_header(skb);
 
     return count;
