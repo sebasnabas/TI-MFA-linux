@@ -23,10 +23,10 @@ struct ti_mfa_route {
 };
 
 struct ti_mfa_shim_hdr {
-    struct ti_mfa_link link;
     unsigned char node_source[ETH_ALEN];
+    struct ti_mfa_link link;
     u8            bos;
-};
+} __attribute__((packed));
 
 struct ti_mfa_neigh {
     struct net         *net;

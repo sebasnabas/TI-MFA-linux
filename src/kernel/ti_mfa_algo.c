@@ -383,13 +383,19 @@ void set_local_link_failures(const struct net *net,
     next_hop->link_failure_count = link_failures;
 }
 
-bool fill_link_failure_stack(const struct ti_mfa_shim_hdr link_failures[], const uint total, const uint count,
-                                    struct ti_mfa_shim_hdr *hdr, struct net_device *dev, bool bos)
+bool set_link_failure_stack(struct sk_buff *skb, const uint count,
+                            const struct ti_mfa_shim_hdr link_failures[],
+                            bool bos)
 {
-    int i, end = total - count;
+    int i = 0;
+    struct ti_mfa_shim_hdr *hdr;
 
-    for (i = total - 1; i >= end; i--) {
-        struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i - end];
+    skb_push(skb, sizeof(*hdr) * count);
+    skb_reset_network_header(skb);
+    hdr = ti_mfa_hdr(skb);
+
+    for (i = count - 1; i >= 0; i--) {
+        struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i];
         hdr[i] = ti_mfa_entry;
         hdr[i].bos = bos;
         ether_addr_copy(hdr[i].node_source, dev->dev_addr);
@@ -422,8 +428,6 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     const unsigned int max_labels = nh->labels == 0 ? orig_label_count : nh->labels;
     struct mpls_entry_decoded *new_label_stack = kmalloc_array(max_labels, sizeof(struct mpls_entry_decoded), GFP_KERNEL);
     struct net_device *out_dev = nh->dev;
-    struct ti_mfa_shim_hdr *ti_mfa_h;
-    bool bos = false;
 
     if (!flush_link_failure_stack)
         link_failure_count += nh->link_failure_count;
@@ -456,6 +460,8 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     pr_debug("Calculated header size with label count: %u and link failure count %u\n", label_count, link_failure_count);
 
+    skb_orphan(skb);
+
     if (skb_warn_if_lro(skb))
     {
         error = -1;
@@ -480,8 +486,8 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
     headroom = skb_headroom(skb);
     if (new_header_size + hh_len > headroom)
     {
-        if (skb_expand_head(skb, new_header_size)) {
-            pr_err("Cannot expand head. headroom: %d, new header size: %d\n", headroom, new_header_size);
+        if (skb_cow(skb, new_header_size + hh_len)) {
+            pr_err("Cannot expand head. headroom: %d, new header size: %d\n", headroom, new_header_size + hh_len);
             error = -1;
             goto out_free;
         }
@@ -491,23 +497,17 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     if (link_failure_count > 0)
     {
-        uint new_link_failure_count = nh->link_failure_count;
-        uint old_link_failure_count = link_failure_count - new_link_failure_count;
-        bos = true;
+        bool bos = true;
+        uint old_link_failure_count = link_failure_count - nh->link_failure_count;
+
         /* Set new ti-mfa header */
         pr_debug("Setting new ti-mfa header\n");
-        skb_push(skb, ti_mfa_hdr_size);
-        skb_reset_network_header(skb);
 
-        ti_mfa_h = ti_mfa_hdr(skb);
-
-        bos = fill_link_failure_stack(nh->link_failures, link_failure_count, new_link_failure_count, ti_mfa_h, out_dev, bos);
+        bos = set_link_failure_stack(skb, nh->link_failure_count, nh->link_failures, bos);
 
         if (!flush_link_failure_stack && link_failure_count < MAX_NEW_LABELS) {
             pr_debug("Not flushing link failure stack\n");
-            fill_link_failure_stack(link_failures, old_link_failure_count, old_link_failure_count,
-                                    ti_mfa_h, out_dev, bos
-            );
+            set_link_failure_stack(skb, old_link_failure_count, link_failures, bos);
         }
     }
 
@@ -540,9 +540,10 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     uint link_failure_count = 0;
     struct ti_mfa_nh next_hop;
     struct ethhdr ethh = *eth_hdr(skb);
-    struct ethhdr *neweth;
 
-    skb_pull(skb, sizeof(ethh));
+    skb_copy_bits(skb, skb_mac_offset(skb), &ethh, ETH_HLEN);
+    pskb_pull(skb, ETH_HLEN);
+    skb_reset_network_header(skb);
 
     mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
 
@@ -556,7 +557,6 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
         mpls_label_count--;
         destination = label_stack[mpls_label_count - 1];
 
-        skb_set_network_header(skb, -14);   /* Circumvent skip between mpls parsing and ti-mfa parsing */
         link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     }
 
@@ -587,13 +587,10 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     rcu_read_unlock();
 
-    ether_addr_copy(ethh.h_dest, next_hop.ha);
-    ether_addr_copy(ethh.h_source, skb->dev->dev_addr);
+    eth_header(skb, skb->dev, ntohs(ethh.h_proto), skb->dev->dev_addr, next_hop.ha, 0);
+    skb_reset_mac_header(skb);
 
-    neweth = skb_push(skb, sizeof(ethh));
-    *neweth = ethh;
-    neweth->h_proto = skb->protocol;
-
+    ethh = *eth_hdr(skb);
     pr_debug("Eth dest: %pM, src: %pM\n", ethh.h_dest, ethh.h_source);
     pr_debug("<== xmit via %s ==>\n", skb->dev->name);
 
