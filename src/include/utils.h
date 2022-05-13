@@ -3,13 +3,8 @@
 
 #include "ti_mfa.h"
 
-#ifdef DEBUG
-    #include <linux/utsname.h>
-    #define HOST_NAME utsname()->nodename
-#else
-    #define HOST_NAME ""
-#endif
 
+/* TODO: replace with #include <linux/compiler_attributes.h> */
 #ifdef __clang__
     #define __fallthrough__ [[fallthrough]]
 #else

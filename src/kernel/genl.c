@@ -1,4 +1,4 @@
-#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+#include "debug.h"
 
 /* Modified from https://github.com/netgroup/TI_MFAv6-net-prog/blob/master/ti_mfaext/kernel/ti_mfa_genl.c
  */

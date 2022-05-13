@@ -1,4 +1,4 @@
-#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+#include "debug.h"
 
 #include <linux/kernel.h>
 #include <linux/module.h>
