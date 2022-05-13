@@ -126,6 +126,10 @@ static int initialize_hooks(void)
 
     while (dev)
     {
+        if (strcmp(dev->name, "lo") == 0) {
+            goto next_dev;
+        }
+
         // START Ingress
         timfa_hooks[i].hook = timfa_ingress_hook;
         timfa_hooks[i].hooknum = NF_NETDEV_INGRESS;
@@ -144,6 +148,7 @@ static int initialize_hooks(void)
         pr_debug("TI-MFA ingress hook successfully registered on device: %s!\n", dev->name);
         i++;
 
+next_dev:
         dev = next_net_device(dev);
     }
 
