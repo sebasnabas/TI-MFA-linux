@@ -1,12 +1,12 @@
 ti_mfa_protocol = Proto("TI-MFA", "TI-MFA Protocol")
 
-link_source = ProtoField.ether("TI-MFA.source", "Link Source")
-link_dest = ProtoField.ether("TI-MFA.dest", "Link Destination")
-node_source = ProtoField.ether("TI-MFA.node_source", "Node Source")
-bos = ProtoField.bool("TI-MFA.bos", "Bottom of Stack")
+f_link_source = ProtoField.ether("TI-MFA.source", "Link Source")
+f_link_dest = ProtoField.ether("TI-MFA.dest", "Link Destination")
+f_node_source = ProtoField.ether("TI-MFA.node_source", "Node Source")
+f_bos = ProtoField.bool("TI-MFA.bos", "Bottom of Stack")
 
 ti_mfa_protocol.fields = {
-  link_source, link_dest, node_source, bos
+  f_link_source, f_link_dest, f_node_source, f_bos
 }
 
 function ti_mfa_protocol.dissector(buffer, pinfo, tree)
@@ -16,16 +16,28 @@ function ti_mfa_protocol.dissector(buffer, pinfo, tree)
   local length = buffer:len()
   pinfo.cols.protocol = ti_mfa_protocol.name
 
-  local subtree = tree:add(ti_mfa_protocol, buffer(), "TI-MFA Protocol Data")
+  local offset = 0;
+  local link_failures = 0;
+  local is_bos = false
+  local lf_size = 19
 
-  subtree:add(link_source, buffer(0,6))
-  subtree:add(link_dest, buffer(6, 6))
-  subtree:add(node_source, buffer(12, 6))
-  subtree:add(bos, buffer(18, 1))
+  while (not is_bos)
+  do
+    local subtree = tree:add(ti_mfa_protocol, buffer(), "TI-MFA Link Failure Header")
+    subtree:add(f_link_source, buffer(offset, 6))
+    subtree:add(f_link_dest, buffer(offset + 6, 6))
+    subtree:add(f_node_source, buffer(offset + 12, 6))
+    subtree:add(f_bos, buffer(offset + 18, 1))
 
-  local ip_withoutfcs = Dissector.get("icmp")
+    is_bos = buffer(offset + 18, 1):uint() == 1
 
-  ip_withoutfcs(buffer(19, length - 19):tvb(), pinfo, tree)
+    offset = offset + lf_size
+    link_failures = link_failures + 1
+  end
+
+  local ip_withoutfcs = Dissector.get("ip")
+
+  ip_withoutfcs(buffer(offset, length - (lf_size * link_failures)):tvb(), pinfo, tree)
 end
 
 mpls_table = DissectorTable.get("mpls.label")
