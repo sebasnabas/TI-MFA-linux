@@ -9,8 +9,8 @@
 #include <net/genetlink.h>
 #include <linux/rwlock.h>
 
-#include "../include/routes.h"
-#include "../include/ti_mfa_genl.h"
+#include "routes.h"
+#include "ti_mfa_genl.h"
 
 
 #define RESPONSE_ER "Error from kernel space."
