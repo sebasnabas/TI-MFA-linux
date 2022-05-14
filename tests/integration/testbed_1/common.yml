@@ -13,6 +13,10 @@
         enabled: false
         state: stopped
 
+    - name: Update cache
+      ansible.builtin.apt:
+        update_cache: true
+
     - name: Install necessary packages
       ansible.builtin.apt:
         pkg:
