@@ -1,4 +1,6 @@
-#!/bin/bash -eux
+#!/usr/bin/env bash
+
+set -eux
 
 function get_ha() {
     local machine="$1"
