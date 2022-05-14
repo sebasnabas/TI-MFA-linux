@@ -573,9 +573,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     struct ti_mfa_nh next_hop;
     struct ethhdr ethh = *eth_hdr(skb);
 
-    skb_copy_bits(skb, skb_mac_offset(skb), &ethh, ETH_HLEN);
-    pskb_pull(skb, ETH_HLEN);
-    skb_reset_network_header(skb);
+    pr_debug("Got packet from %pM\n", ethh.h_source);
 
     mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
 
