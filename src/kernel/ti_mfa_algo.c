@@ -97,10 +97,29 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
     }
 
     if (rt->rt_nhn == 1) {
+        u32 neigh_index;
+        struct net_device *nh_dev;
         next_mpls_hop = rt->rt_nh;
         is_dest = true;
 
-        eth_zero_addr(nh_link.dest);
+        nh_dev = next_mpls_hop->nh_dev;
+        neigh_index = *((u32 *) mpls_nh_via(rt, next_mpls_hop));
+
+        switch (next_mpls_hop->nh_via_table) {
+            case NEIGH_ARP_TABLE:
+                neigh = __ipv4_neigh_lookup_noref(nh_dev, neigh_index);
+                break;
+            default:
+                // @TODO: Support for IPv6
+                break;
+        }
+
+        if (neigh == NULL) {
+            eth_zero_addr(nh_link.dest);
+        }
+        else {
+            ether_addr_copy(nh_link.dest, neigh->ha);
+        }
         ether_addr_copy(nh_link.source, next_mpls_hop->nh_dev->dev_addr);
 
         pr_debug("NH: dev: %s, mac: %pM\n", next_mpls_hop->nh_dev->name, nh_link.dest);
@@ -108,7 +127,7 @@ static struct ti_mfa_nh *get_failure_free_next_hop(struct net *net, const u32 de
         if (is_link_failure(nh_link, local_link_failure_count, local_link_failures)
             || is_link_failure(nh_link, link_failure_count, link_failures)) {
 
-            pr_debug("Not using this next hop, since there's a link failure for %pM\n", nh_link.dest);
+            pr_debug("Not using this next hop, since there's a link failure for %pM - %pM\n", nh_link.source, nh_link.dest);
             return NULL;
         }
     } else {
@@ -533,6 +552,7 @@ out_free:
 */
 int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 {
+    bool flush_failure_stack = false;
     struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
     struct mpls_entry_decoded destination;
@@ -571,19 +591,46 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
         goto out_error;
 
     if (next_hop.is_dest && next_hop.labels == 0 && next_hop.link_failure_count == 0) {
-        pr_debug("Seems like the next hop is the destination and there are no link failures.\n");
-        goto out_pop;
-    }
+        enum mpls_payload_type payload_type;
 
-    if (next_hop.dev == NULL && is_zero_ether_addr(next_hop.ha)) {
-        /* No next hop was found, so we're sending the packet back */
-        next_hop.dev = skb->dev;
-        ether_addr_copy(next_hop.ha, ethh.h_source);
-        pr_debug("Sending packet back to %pM via dev %s\n", next_hop.ha, next_hop.dev->name);
-    }
+        if (!pskb_may_pull(skb, 12)) {
+            pr_err("Cannot pull ip header\n");
+            goto out_error;
+        }
 
-    if (set_new_label_stack(skb, label_stack, mpls_label_count, &next_hop, link_failures, link_failure_count, false) != 0)
-        goto out_error;
+        payload_type = ip_hdr(skb)->version;
+        skb->dev = next_hop.dev;
+
+        pr_debug("Found no local link failures -> Penultimate hop popping\n");
+        pr_debug("Payload type: %d\n", payload_type);
+
+        switch(payload_type) {
+            case MPT_IPV4: {
+                skb->protocol = htons(ETH_P_IP);
+                break;
+            }
+            case MPT_IPV6: {
+                skb->protocol = htons(ETH_P_IPV6);
+                break;
+            }
+            default:
+                pr_err("Unspec\n");
+                skb->protocol = htons(ETH_P_IP);
+                break;
+        }
+    }
+    else  {
+        if ((next_hop.dev == NULL || next_hop.dev == skb->dev) && is_zero_ether_addr(next_hop.ha)) {
+            /* No next hop was found, so we're sending the packet back */
+            next_hop.dev = skb->dev;
+            ether_addr_copy(next_hop.ha, ethh.h_source);
+            pr_debug("Sending packet back to %pM via dev %s\n", next_hop.ha, next_hop.dev->name);
+
+        }
+        if (set_new_label_stack(net, skb, label_stack, mpls_label_count,
+                                &next_hop, link_failures, link_failure_count, flush_failure_stack) != 0)
+            goto out_error;
+    }
 
     rcu_read_unlock();
 
