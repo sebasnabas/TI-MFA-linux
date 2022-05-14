@@ -462,6 +462,8 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     if (!flush_link_failure_stack)
         link_failure_count += nh->link_failure_count;
+    else
+        link_failure_count = nh->link_failure_count;
 
     pr_debug("Setting new label stack. orig_label_count: %u\n", orig_label_count);
     /* TODO: Validate node computing <22-04-22> */
