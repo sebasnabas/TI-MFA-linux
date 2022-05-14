@@ -63,29 +63,11 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff *skb,
                                        const struct nf_hook_state *state)
 {
     unsigned int exit_code = NF_ACCEPT;
-    struct mpls_shim_hdr *hdr;
-    struct mpls_entry_decoded mpls_entry;
 
     if (!eth_p_mpls(skb->protocol))
     {
         goto exit;
     }
-
-    if (!pskb_may_pull(skb, sizeof(*hdr)))
-    {
-        goto exit;
-
-    }
-
-    hdr = mpls_hdr(skb);
-
-    if (hdr == NULL)
-    {
-        goto exit;
-    }
-
-    mpls_entry = mpls_entry_decode(hdr);
-    pr_debug("[%s]:[%s] INGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
 
     switch(run_ti_mfa(state->net, skb))
     {
