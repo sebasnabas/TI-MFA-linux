@@ -587,7 +587,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 
     rcu_read_unlock();
 
-    eth_header(skb, skb->dev, ntohs(ethh.h_proto), skb->dev->dev_addr, next_hop.ha, 0);
+    eth_header(skb, skb->dev, ntohs(skb->protocol), next_hop.ha, skb->dev->dev_addr, 0);
     skb_reset_mac_header(skb);
 
     ethh = *eth_hdr(skb);
