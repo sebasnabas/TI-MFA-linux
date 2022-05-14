@@ -597,7 +597,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
     {
         pr_err("Error on xmit\n");
-        goto out_retry;
+        goto out_error;
     }
 
     goto out_success;
@@ -608,40 +608,6 @@ out_error:
 
 out_success:
     return TI_MFA_SUCCESS;
-
-out_retry:
-    /* @TODO: add new link failure to header */
-    return TI_MFA_RETRY;
-
-out_pop:
-    rcu_read_unlock();
-    return TI_MFA_POP;
-}
-
-static int pop_link_failure_stack(struct sk_buff *skb)
-{
-    int return_code = 0;
-    struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
-    struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
-    uint mpls_label_count = 0;
-    struct ethhdr ethh = *eth_hdr(skb);
-    struct ethhdr *neweth;
-
-    skb_pull(skb, sizeof(ethh));
-
-    mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
-    flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
-
-    if (label_stack[mpls_label_count - 1].label == TI_MFA_MPLS_EXTENSION_LABEL) {
-        mpls_label_count--;
-    }
-
-    set_mpls_header(skb, mpls_label_count, label_stack, false);
-
-    neweth = skb_push(skb, sizeof(ethh));
-    *neweth = ethh;
-
-    return return_code;
 }
 
 int run_ti_mfa(struct net *net, struct sk_buff *skb)
@@ -654,9 +620,7 @@ int run_ti_mfa(struct net *net, struct sk_buff *skb)
         return TI_MFA_PASS;
     }
 
-    /* Create new skbuff, because sending original skb
-    * via dev_queue_xmit() causes system crash
-    */
+    /* Create new skbuff to be safe */
     new_skb = skb_copy(skb, GFP_ATOMIC);
     if (new_skb == NULL)
     {
@@ -664,32 +628,13 @@ int run_ti_mfa(struct net *net, struct sk_buff *skb)
         return TI_MFA_ERROR;
     }
 
-    // Sending packet to detect link failure doesn't work, because routing was already done
-    // Avoid recursion (?)
-    nf_skip_egress(new_skb, true);
-
-    do
-    {
-       return_code = __run_ti_mfa(net, new_skb);
-    } while (return_code == TI_MFA_RETRY);
+    return_code = __run_ti_mfa(net, new_skb);
 
 
-    if (return_code == TI_MFA_ERROR || return_code == TI_MFA_POP)
+    if (return_code == TI_MFA_ERROR)
     {
         kfree_skb(new_skb);
     }
-
-    /* Remove link failures from current skb */
-    if (return_code == TI_MFA_POP) {
-        pr_debug("Removing link failures from skb\n");
-        if (pop_link_failure_stack(skb) != 0) {
-            return_code = TI_MFA_ERROR;
-        } else {
-            return_code = TI_MFA_PASS;
-        }
-    }
-    /* pr_err("ABORT\n"); return TI_MFA_ERROR; */
-
 
     return return_code;
 }

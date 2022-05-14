@@ -11,8 +11,6 @@
 #define TI_MFA_SUCCESS  0x00
 #define TI_MFA_PASS     0x01    /* skb was not an mpls packet */
 #define TI_MFA_ERROR    0x02
-#define TI_MFA_RETRY    0x03
-#define TI_MFA_POP      0x04
 
 uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max);
 int run_ti_mfa(struct net *net, struct sk_buff *skb);
