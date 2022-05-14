@@ -465,18 +465,30 @@ int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded ori
 
     pr_debug("Setting new label stack. orig_label_count: %u\n", orig_label_count);
     /* TODO: Validate node computing <22-04-22> */
-    for (i = 0; i < orig_label_count; i++) {
-        for (j = 0; j < nh->labels; j++) {
-            pr_debug("NH Label: %u", nh->label[j]);
-            if (nh->label[j] != orig_label_path[i].label)
+    for (i = 0; i < nh->labels; i++) {
+        struct mpls_entry_decoded entry;
+        bool found = false;
+
+        for (j = i; j < orig_label_count; j++) {
+            if (nh->label[i] != orig_label_path[j].label)
             {
                 continue;
             }
 
-            new_label_stack[label_count] = orig_label_path[i];
-            pr_debug("%u: set label: %u %s\n", label_count, new_label_stack[label_count].label, new_label_stack[label_count].bos ? "[S]" : "");
-            label_count++;
+            found = true;
+            entry = orig_label_path[j];
         }
+
+        if (!found) {
+            entry.bos = false;
+            entry.label = nh->label[i];
+            entry.ttl = net->mpls.default_ttl;
+            entry.tc = 0;
+        }
+
+        new_label_stack[label_count] = entry;
+        pr_debug("%u: set label: %u %s\n", label_count, new_label_stack[label_count].label, new_label_stack[label_count].bos ? "[S]" : "");
+        label_count++;
     }
 
     if (link_failure_count > 0)
