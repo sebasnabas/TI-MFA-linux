@@ -19,10 +19,6 @@
 #include "ti_mfa_algo.h"
 #include "utils.h"
 
-
-#include <linux/etherdevice.h>
-#include <linux/netfilter_netdev.h>
-
 MODULE_AUTHOR("Sebastian");
 MODULE_DESCRIPTION("Topology Independent Multi-Failure Alternate (TI-MFA)");
 MODULE_VERSION("0.1");
@@ -93,79 +89,6 @@ exit:
     return exit_code;
 }
 
-static unsigned int egress_hook(void *priv, struct sk_buff *skb,
-                                const struct nf_hook_state *state)
-{
-    uint label_count = 0, link_failure_count = 0;
-    struct ethhdr ethh;
-    struct sk_buff *new_skb = NULL;
-    struct mpls_entry_decoded label_stack[MAX_NEW_LABELS];
-    struct ti_mfa_shim_hdr link_failures[MAX_NEW_LABELS];
-    struct ti_mfa_nh nh;
-
-    if (!eth_p_mpls(skb->protocol))
-    {
-        return NF_ACCEPT;
-    }
-
-    new_skb = skb_copy(skb, GFP_ATOMIC);
-    if (new_skb == NULL) {
-        pr_err("F\n");
-        return NF_ACCEPT;
-    }
-
-    pr_debug("BEFORE Modifying\n");
-    pkt_hex_dump(skb);
-
-    skb_copy_bits(new_skb, skb_mac_offset(new_skb), &ethh, ETH_HLEN);
-	pskb_pull(new_skb, ETH_HLEN);
-	skb_reset_network_header(new_skb);
-
-    label_count = flush_mpls_label_stack(new_skb, label_stack, MAX_NEW_LABELS);
-
-    ether_addr_copy(nh.ha, ethh.h_dest);
-
-    nh.label[0] = label_stack[0].label;
-    nh.labels = 1;
-
-    eth_zero_addr(nh.link_failures[0].link.source);
-    nh.link_failures[0].link.source[0] = 1;
-
-    eth_zero_addr(nh.link_failures[0].link.dest);
-    nh.link_failures[0].link.dest[0] = 2;
-
-    nh.link_failures[0].bos = true;
-
-    nh.link_failure_count = 1;
-
-    eth_zero_addr(link_failures[0].link.source);
-    link_failures[0].link.source[0] = 4;
-
-    eth_zero_addr(link_failures[0].link.dest);
-    link_failures[0].link.dest[0] = 5;
-
-    eth_zero_addr(link_failures[0].node_source);
-    link_failures[0].node_source[0] = 6;
-
-    link_failures[0].bos = true;
-
-    nh.is_dest = false;
-    nh.dev = new_skb->dev;
-
-    set_new_label_stack(state->net, new_skb, label_stack, label_count, &nh, link_failures, 1, false);
-
-    eth_header(new_skb, new_skb->dev, ntohs(ethh.h_proto), ethh.h_dest, ethh.h_source, 0);
-	skb_reset_mac_header(skb);
-
-    nf_skip_egress(new_skb, true);
-
-    pr_debug("AFTER Modifying\n");
-    pkt_hex_dump(new_skb);
-
-    dev_queue_xmit(new_skb);
-    return NF_DROP;
-}
-
 static int initialize_hooks(void)
 {
     int return_code;
@@ -189,6 +112,7 @@ static int initialize_hooks(void)
             goto next_dev;
         }
 
+        // START Ingress
         timfa_hooks[i].hook = timfa_ingress_hook;
         timfa_hooks[i].hooknum = NF_NETDEV_INGRESS;
         timfa_hooks[i].pf = NFPROTO_NETDEV;
