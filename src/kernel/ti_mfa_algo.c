@@ -448,8 +448,9 @@ bool set_link_failure_stack(struct sk_buff *skb, const uint count,
 *      For the second item on the label stack, start over with
 *      v_i as starting node until v_i=t
 */
-int set_new_label_stack(struct sk_buff *skb, const struct mpls_entry_decoded orig_label_path[], unsigned int orig_label_count,
-                        const struct ti_mfa_nh *nh, const struct ti_mfa_shim_hdr link_failures[], unsigned int link_failure_count,
+int set_new_label_stack(const struct net *net,struct sk_buff *skb,
+                        const struct mpls_entry_decoded orig_label_path[], unsigned int orig_label_count,
+                        struct ti_mfa_nh *nh, const struct ti_mfa_shim_hdr link_failures[], unsigned int link_failure_count,
                         bool flush_link_failure_stack)
 {
     int error = 0;
