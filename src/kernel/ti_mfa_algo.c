@@ -207,6 +207,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
     struct ti_mfa_nh *tmp_nh = NULL;
     struct net_device *out_dev = NULL;
     uint hop_min = UINT_MAX;
+    u32 backup_dest = 0;
 
     /* TODO:  <20-04-22>
      * @Parameters: link failures, destination
@@ -252,6 +253,8 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
             out_dev_tmp = dev_get_by_name(net, found_rt->out_dev_name);
             if (mpls_output_possible(out_dev_tmp))
                 out_dev = out_dev_tmp;
+
+            backup_dest = found_rt->destination_label;
 
             hop_min = rt->rt_nhn;
         }
@@ -300,6 +303,8 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
             pr_debug("Found backup route to label %u via dev %s\n",
                     found_rt->destination_label, out_dev->name);
 
+            backup_dest = found_rt->destination_label;
+
             hop_min = rt->rt_nhn;
         }
 
@@ -330,10 +335,17 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
     }
 
     next_hop->dev = tmp_nh->dev;
-    next_hop->labels = tmp_nh->labels;
-    memmove(next_hop->label, tmp_nh->label, sizeof(*(tmp_nh->label)));
     ether_addr_copy(next_hop->ha, tmp_nh->ha);
     next_hop->is_dest = tmp_nh->is_dest;
+    next_hop->labels = 0;
+
+    if (tmp_nh->label[0] != backup_dest && reroute_count > 0) {
+        next_hop->label[0] = backup_dest;
+        next_hop->labels++;
+    }
+
+    memmove(&next_hop->label[next_hop->labels], tmp_nh->label, sizeof(*(tmp_nh->label)));
+    next_hop->labels += tmp_nh->labels;
 
     /* Add destination label if we do a detour */
     if (reroute_count > 0 || (next_hop->labels == 0 && !next_hop->is_dest)) {
