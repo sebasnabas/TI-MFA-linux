@@ -21,7 +21,7 @@ Vagrant.configure("2") do |config|
 
   config.vm.provision "shell", inline: "apt-get install --yes python3-apt"
   config.vm.synced_folder "../../../src", "/home/vagrant/ti-mfa-src"
-
+  config.vm_boot_timeout = 600
 
   # Network topology
   # see https://www.univie.ac.at/ct/stefan/gi18.pdf figure 1
