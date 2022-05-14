@@ -13,21 +13,74 @@ function install {
     done
 }
 
-function scenario_1 {
-    local link_e_r
-    # local link_e_m
+function reset {
+    for machine in $(vagrant status --machine-readable | grep state,running | cut -d ',' -f 2)
+    do
+        vagrant ssh "${machine}" -c "sudo rmmod ti_mfa || true"
 
-    # link_e_m="$(get_ha T eth2)-$(get_ha M eth2)"
-    link_e_r="$(get_ha T eth3)-$(get_ha R eth2)"
+        case "${machine}" in
+            T )
+                vagrant ssh T -c "sudo ip link set eth2 up"
+                vagrant ssh T -c "sudo ip link set eth3 up"
+                ;;
+            M )
+                vagrant ssh M -c "sudo ip link set eth2 up"
+                ;;
+            R )
+                vagrant ssh R -c "sudo ip link set eth2 up"
+                ;;
+        esac
+    done || exit 1
 
-    # vagrant ssh M -c "ti-mfa-conf add ${link_e_m} 1200 eth1"
-    vagrant ssh R -c "ti-mfa-conf add ${link_e_r} 1200 eth1"
-    vagrant ssh T -c "sudo ip link set eth1 down"
-    vagrant ssh T -c "sudo ip link set eth2 down"
-    vagrant ssh M -c "sudo ip link set eth2 down"
-    vagrant ssh R -c "sudo ip link set eth2 down"
-    vagrant ssh Z -c 'ping -c 1 10.200.200.1'
+    # Fill neighbor caches
+    ./setup.sh
 }
 
-install
-scenario_1
+function check_routes {
+
+    destinations=(1 2 3 4)
+
+    for machine in $(vagrant status --machine-readable | grep state,running | cut -d ',' -f 2)
+    do
+        for dest in "${destinations[@]}"
+        do
+            vagrant ssh "${machine}" -c "ping -c 1 -w 1 10.200.200.${dest}"
+        done || exit 1
+    done || exit 1
+}
+
+function prepare {
+    pushd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
+
+    reset || exit 1
+
+    check_routes || exit 1
+
+    install
+}
+
+function test_scenario_1 {
+    local link_e_r
+
+    link_e_r="$(get_ha T eth3)-$(get_ha R eth2)"
+
+    vagrant ssh R -c "ti-mfa-conf add ${link_e_r} 1200 eth1"
+    vagrant ssh T -c "sudo ip link set eth2 down"
+    vagrant ssh T -c "sudo ip link set eth3 down"
+    vagrant ssh M -c "sudo ip link set eth2 down"
+    vagrant ssh R -c "sudo ip link set eth2 down"
+
+    # Check if packet arrives at T
+    vagrant ssh T -c 'sudo timeout 15 tcpdump -i eth1 -Q in mpls' | grep '1 packet captured' &
+    check_pid=$!
+
+    # Send 1 packet to 10.200.200.1
+    # a response is not expected
+    vagrant ssh M -c 'ping -c 1 10.200.200.1' || true
+
+    wait $check_pid
+    echo "exit code $?"
+}
+
+prepare || exit 1
+test_scenario_1 || exit 1
