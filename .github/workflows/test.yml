@@ -19,6 +19,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vagrant-
 
+      - name: Install ansible
+        run: python3 -m pip install ansible
+
       - name: Run testbed 1 script
         working-directory: tests/integration/testbed_1
         run: ./run.sh
