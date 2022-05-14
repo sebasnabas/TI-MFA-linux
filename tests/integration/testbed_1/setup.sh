@@ -1,4 +1,6 @@
-#!/usr/bin/bash -ex
+#!/usr/bin/env bash
+
+set -ex
 
 pushd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
