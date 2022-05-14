@@ -13,6 +13,15 @@
         enabled: false
         state: stopped
 
+    - name: Install necessary packages
+      ansible.builtin.apt:
+        pkg:
+          - cmake
+          - gcc
+          - gpg
+          - iproute2
+          - tcpdump
+
     - name: Configure ip forwarding
       ansible.posix.sysctl:
         name: "{{ item }}"
