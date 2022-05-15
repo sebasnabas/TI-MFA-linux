@@ -1,7 +1,0 @@
----
-- hosts:
-    - timfa-test-machine-t
-  tasks:
-    - name: Shutdown e_m and e_r
-      ansible.builtin.cmd:
-        cmd:

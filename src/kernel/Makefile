@@ -1,7 +1,7 @@
 obj-m := ti-mfa.o
 ti-mfa-m := hook.o mpls.o ti_mfa_algo.o utils.o genl.o routes.o
 
-GEN_COMPILE_COMMANDS := ../../generate_compdb.py
+GEN_COMPILE_COMMANDS := ../../tools/generate_compdb.py
 
 INCLUDES = -I $(PWD)/../include
 CFLAGS = "$(INCLUDES) -D DEBUG -Wall"

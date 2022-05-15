@@ -183,7 +183,8 @@ static inline struct mpls_nh *mpls_get_nexthop(struct mpls_route *rt, u8 index)
 
 bool is_not_mpls(struct sk_buff *skb);
 uint get_number_of_mpls_capable_net_devices(struct net *net);
-
+void debug_print_mpls_entries(uint label_count, const struct mpls_entry_decoded entries[]);
 uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels);
+void set_mpls_header(struct sk_buff *skb, uint label_count, const struct mpls_entry_decoded new_label_stack[], bool add_extension_hdr);
 
 #endif /* TI_MFA_MPLS_H */

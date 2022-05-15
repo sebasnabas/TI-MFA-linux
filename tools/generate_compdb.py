@@ -22,13 +22,16 @@ UNKNOWN_OPTIONS = [
     '-mno-fp-ret-in-387',
     '-mpreferred-stack-boundary=3',
     '-mskip-rax-setup',
+    '-mindirect-branch-cs-prefix',
     '-mindirect-branch=thunk-extern',
     '-mindirect-branch-register',
     '-fno-allow-store-data-races',
     '-fplugin-arg-structleak_plugin-byref-all',
+    '-ftrivial-auto-var-init=zero',
     '-mrecord-mcount',
     '--no-fp',
     '--retpoline',
+    '--sls',
     '--uaccess'
 ]
 

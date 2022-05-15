@@ -1,6 +1,6 @@
-#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+#include "debug.h"
 
-/* Modified from https://github.com/netgroup/TI_MFAv6-net-prog/blob/master/ti_mfaext/kernel/ti_mfa_genl.c
+/* Modified from https://github.com/netgroup/srv6-net-prog/blob/master/srext/kernel/sr_genl.c
  */
 #include <linux/etherdevice.h>
 #include <linux/module.h>
@@ -9,8 +9,8 @@
 #include <net/genetlink.h>
 #include <linux/rwlock.h>
 
-#include "../include/routes.h"
-#include "../include/ti_mfa_genl.h"
+#include "routes.h"
+#include "ti_mfa_genl.h"
 
 
 #define RESPONSE_ER "Error from kernel space."

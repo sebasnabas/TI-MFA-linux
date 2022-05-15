@@ -90,7 +90,7 @@ Vagrant.configure("2") do |config|
       vm_static_routes[machine_id].each do |options, static_routes|
         static_routes.each do |static_route|
           command = "sudo ip #{options} route add #{static_route}"
-          machine.vm.provision "shell", inline: command
+          machine.vm.provision "shell", inline: "echo #{command}; #{command}"
         end
       end
     end

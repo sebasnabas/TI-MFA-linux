@@ -23,11 +23,10 @@ struct ti_mfa_route {
 };
 
 struct ti_mfa_shim_hdr {
-    unsigned char link_source[ETH_ALEN];
-    unsigned char link_dest[ETH_ALEN];
     unsigned char node_source[ETH_ALEN];
+    struct ti_mfa_link link;
     u8            bos;
-};
+} __attribute__((packed));
 
 struct ti_mfa_neigh {
     struct net         *net;
@@ -44,6 +43,7 @@ struct ti_mfa_nh {
     u8                      link_failure_count;
     u32                     label[MAX_NEW_LABELS];
     struct ti_mfa_shim_hdr  link_failures[MAX_NEW_LABELS];
+    bool                    is_dest;
 };
 
 static inline struct ti_mfa_shim_hdr *ti_mfa_hdr(const struct sk_buff *skb)
@@ -54,8 +54,8 @@ static inline struct ti_mfa_shim_hdr *ti_mfa_hdr(const struct sk_buff *skb)
 static inline struct ti_mfa_link ti_mfa_hdr_to_link(const struct ti_mfa_shim_hdr hdr)
 {
     struct ti_mfa_link link;
-    ether_addr_copy(link.source, hdr.link_source);
-    ether_addr_copy(link.dest, hdr.link_dest);
+    ether_addr_copy(link.source, hdr.link.source);
+    ether_addr_copy(link.dest, hdr.link.dest);
     return link;
 }
 

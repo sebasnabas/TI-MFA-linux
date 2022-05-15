@@ -1,4 +1,4 @@
-#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+#include "debug.h"
 
 #include <linux/ip.h>
 #include <linux/kernel.h>
@@ -14,10 +14,10 @@
 #include <net/protocol.h>
 #include <net/sock.h>
 
-#include "../include/ti_mfa_genl.h"
-#include "../include/mpls.h"
-#include "../include/ti_mfa_algo.h"
-#include "../include/utils.h"
+#include "ti_mfa_genl.h"
+#include "mpls.h"
+#include "ti_mfa_algo.h"
+#include "utils.h"
 
 MODULE_AUTHOR("Sebastian");
 MODULE_DESCRIPTION("Topology Independent Multi-Failure Alternate (TI-MFA)");
@@ -55,33 +55,15 @@ static struct notifier_block ti_mfa_dev_notifier = {
     .notifier_call = ti_mfa_notify,
 };
 
-static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
-                              const struct nf_hook_state * state)
+static unsigned int timfa_ingress_hook(void *priv, struct sk_buff *skb,
+                                       const struct nf_hook_state *state)
 {
     unsigned int exit_code = NF_ACCEPT;
-    struct mpls_shim_hdr *hdr;
-    struct mpls_entry_decoded mpls_entry;
 
     if (!eth_p_mpls(skb->protocol))
     {
         goto exit;
     }
-
-    if (!pskb_may_pull(skb, sizeof(*hdr)))
-    {
-        goto exit;
-
-    }
-
-    hdr = mpls_hdr(skb);
-
-    if (hdr == NULL)
-    {
-        goto exit;
-    }
-
-    mpls_entry = mpls_entry_decode(hdr);
-    pr_debug("[%s]:[%s] EGRESS Got mpls packet with label %u\n", HOST_NAME, state->in->name, mpls_entry.label);
 
     switch(run_ti_mfa(state->net, skb))
     {
@@ -96,6 +78,7 @@ static unsigned int timfa_egress_hook(void *priv, struct sk_buff * skb,
 
         /* Handling TI_MFA_PASS */
         default:
+            exit_code = NF_ACCEPT;
             break;
     }
 
@@ -125,9 +108,13 @@ static int initialize_hooks(void)
 
     while (dev)
     {
-        // START Egress
-        timfa_hooks[i].hook = timfa_egress_hook;
-        timfa_hooks[i].hooknum = NF_NETDEV_EGRESS;
+        if (strcmp(dev->name, "lo") == 0) {
+            goto next_dev;
+        }
+
+        // START Ingress
+        timfa_hooks[i].hook = timfa_ingress_hook;
+        timfa_hooks[i].hooknum = NF_NETDEV_INGRESS;
         timfa_hooks[i].pf = NFPROTO_NETDEV;
         timfa_hooks[i].priority = NF_IP_PRI_LAST;
         timfa_hooks[i].dev = dev;
@@ -136,14 +123,14 @@ static int initialize_hooks(void)
 
         if (return_code < 0)
         {
-            pr_err("Registering egress hook failed for device %s, with %d\n", dev->name, return_code);
+            pr_err("Registering ingress hook failed for device %s, with %d\n", dev->name, return_code);
             return return_code;
         }
 
-        pr_debug("TI-MFA egress hook successfully registered on device: %s!\n", dev->name);
+        pr_debug("TI-MFA ingress hook successfully registered on device: %s!\n", dev->name);
         i++;
-        // END Egress
 
+next_dev:
         dev = next_net_device(dev);
     }
 

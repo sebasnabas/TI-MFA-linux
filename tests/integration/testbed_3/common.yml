@@ -1,9 +1,18 @@
 ---
+# vim: ft=yaml.ansible
 - hosts: all
   become: true
   become_method: sudo
   gather_facts: true
   tasks:
+    - name: Stop and disable unattended-upgrades
+      # It holds /var/lib/dpkg/lock-frontend
+      # which prevents this script from installing packages sometimes
+      ansible.builtin.service:
+        name: unattended-upgrades
+        enabled: false
+        state: stopped
+
     - name: Add loopback interface
       ansible.builtin.shell:
         cmd: ip addr add "{{ loopback_ipv4_address }}" dev lo
