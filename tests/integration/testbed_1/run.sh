@@ -87,4 +87,4 @@ function test_scenario_1 {
 }
 
 prepare || exit 1
-test_scenario_1 || exit 1
+test_scenario_1
