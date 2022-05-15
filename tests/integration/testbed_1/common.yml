@@ -20,6 +20,7 @@
     - name: Install necessary packages
       ansible.builtin.apt:
         pkg:
+          - linux-headers-5.10.0-10-amd64
           - cmake
           - gcc
           - gpg
@@ -74,7 +75,7 @@
         state: present
         sysctl_set: true
         reload: true
-      loop: "{{ ansible_interfaces | reject('equalto', 'lo') | list  + ['default']}}"
+      loop: "{{ ansible_interfaces | reject('equalto', 'lo') | list  + ['default'] }}"
 
     - name: Configure arp_notify
       ansible.posix.sysctl:
@@ -83,4 +84,4 @@
         state: present
         sysctl_set: true
         reload: true
-      loop: "{{ ansible_interfaces | reject('equalto', 'lo') | list  + ['default']}}"
+      loop: "{{ ansible_interfaces | reject('equalto', 'lo') | list  + ['default'] }}"
