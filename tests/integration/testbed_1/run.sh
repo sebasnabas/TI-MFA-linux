@@ -72,16 +72,17 @@ function test_scenario_1 {
     vagrant ssh M -c "sudo ip link set eth2 down"
     vagrant ssh R -c "sudo ip link set eth2 down"
 
-    # Check if packet arrives at T
-    vagrant ssh T -c 'sudo timeout 15 tcpdump -i eth1 -Q in mpls' | grep '1 packet captured' &
-    check_pid=$!
-
     # Send 1 packet to 10.200.200.1
     # a response is not expected
-    vagrant ssh M -c 'ping -c 1 10.200.200.1' || true
+    vagrant ssh M -c 'sleep 5 && ping -c 1 10.200.200.1' &
+    check_pid=$!
 
-    wait $check_pid
-    echo "exit code $?"
+    # Check if packet arrives at T
+    output="$(vagrant ssh T -c 'sudo timeout 15 tcpdump -i eth1 -Q in mpls')"
+
+    wait $check_pid || true
+    echo "$output"
+    echo "$output" | grep '1 packet captured'
 }
 
 prepare || exit 1
