@@ -78,12 +78,11 @@ function test_scenario_1 {
     check_pid=$!
 
     # Check if packet arrives at T
-    vagrant ssh T -c 'sudo timeout 20 tcpdump -i eth1 -Q in mpls' | grep '1 packet captured'
-    exit_code=$?
+    output="$(vagrant ssh T -c 'sudo timeout 20 tcpdump -i eth1 -Q in mpls')"
 
     wait $check_pid || true
 
-    exit $exit_code
+    echo "$output" | grep '1 packet captured'
 }
 
 prepare || exit 1
