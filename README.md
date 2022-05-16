@@ -8,6 +8,7 @@ A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-M
 >       determine the shortest path P to the destination t in the
 >       remaining network G′.
 >   3) Add segments to the label stack of the packet as follows:
+>
 >       • Index the nodes on P as v = v1, v2, …, vx = t.
 >           Compute the node vi on P with the highest index s.t. the shortest path from v is identical in G′ (with failures) and G (without failures) and set it as the top of the label stack.
 >           If this node is v, push the link (v1, v2 = vi) as the top of the label stack.
@@ -16,14 +17,14 @@ A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-M
 ## Implementation
 
 ### Architecture
-Needs Kernel `>= 5.16.0` (For Egress Hook)
+Needs Kernel `>= 4.2` (For Ingress Hook)
 
 #### Control plane tool
 `ti-mfa-conf` configuration tool for:
-* adding a route
-* deleting a route
-* deleting all routes
-* showing all routes
+* adding a route      (`ti-mfa-conf add <mac>-<mac> label dev`)
+* deleting a route    (`ti-mfa-conf del <mac>-<mac> label dev`)
+* deleting all routes (`ti-mfa-conf flush`)
+* showing all routes  (`ti-mfa-conf show`)
 
 Routes are backup routes in case of a link failure.
 A link failure is specified by 2 hardware addresses.
@@ -35,31 +36,25 @@ graph TB
     subgraph Kernel Module
         IP((Incoming Packet)) --> IH_IF{"if (MPLS)"}
 
+        2_TI_MFA -.-> ROUTE_READ
+
         subgraph NF_IH["Netfilter Ingress Hook"]
-            IH_IF        -->|true| IH_IF_TI_MFA{"if (BOS && MPLS Extension Label)"}
-            IH_IF_TI_MFA -->|true| A(Remove TI-MFA headers)
+            IH_IF      -->|true| 1_1_TI_MFA(1. Flush MPLS headers)
+            1_1_TI_MFA --> IF_TI_MFA{"if (last MPLS label == 15)"}
+            IF_TI_MFA  -->|true| 1_2_TI_MFA(Flush TI_MFA_Headers)
+            1_2_TI_MFA --> SLF(Set local link failures)
+            IF_TI_MFA  -->|false| SLF
+            SLF        --> 2_TI_MFA(2. Get shortest path)
+            2_TI_MFA   -->       IF_LF_PHP{"if (No Link Failures && no Nexthop Labels)"}
+            IF_LF_PHP  -->|false| 3_TI_MFA(3. Set label stack)
+            IF_LF_PHP  -->|true| PHP(PHP: Set package type to IP)
         end
 
-        IH_IF        -->|false| R[Kernel Routing]
-        IH_IF_TI_MFA -->|false| R
-        A            -->        R
-        R            -->|false| EH_IF{"if (MPLS)"}
-        EH_IF        -->|false| OP((Outgoing Packet))
-
-        subgraph NF_EH[Netfilter Egress Hook]
-            EH_IF     -->|true| 1_TI_MFA(1. Flush MPLS and/or TI-MFA headers)
-            1_TI_MFA  -->        2_TI_MFA(2. Get shortest path)
-            2_TI_MFA  -->        SLF(Set local link failures)
-            SLF       -->        IF_LF_PHP{"if (Local Link Failures)"}
-            IF_LF_PHP -->|true| 3_TI_MFA(3. Set label stack)
-            IF_LF_PHP -->|false| PHP(PHP: Set package type to IP)
-        end
-
-        2_TI_MFA -.-> ROUTE_READ(Look for Backup Routes)
-
-        SLF     -.-> NEIGH_READ
-        3_TI_MFA -->  OP
-        PHP      -->  OP
+        IH_IF    -->|false| KR((Kernel Routing))
+        SLF      -.-> NEIGH_READ
+        3_TI_MFA -->  XMIT(Send Packet)
+        PHP      -->  XMIT
+        XMIT     --> OP((Outgoing Packet))
 
         subgraph Netdev Notifier
             NETDEV_GOING_DOWN>NETDEV_GOING_DOWN] --> NEIGH_ADD(Add Entry)
@@ -75,13 +70,12 @@ graph TB
         NETLINK_RCV --> ROUTE_SHOW
 
         subgraph Backup Route Configuration
-            ROUTE_ADD(Add Entry)                        --> ROUTES[(Routing Table)]
-            ROUTE_DEL(Delete Entry)                        --> ROUTES
-            ROUTE_FLUSH(Delete all Entries)                      --> ROUTES
-            ROUTE_SHOW(Show all Entries)                       --> ROUTES
-            ROUTE_READ  -->ROUTES
+            ROUTE_ADD(Add Entry)               --> ROUTES[(Routing Table)]
+            ROUTE_DEL(Delete Entry)            --> ROUTES
+            ROUTE_FLUSH(Delete all Entries)    --> ROUTES
+            ROUTE_SHOW(Show all Entries)       --> ROUTES
+            ROUTE_READ(Look for Backup Routes) -->ROUTES
         end
-
     end
 
     subgraph ti-mfa-conf commandline tool
@@ -99,7 +93,7 @@ graph TB
 
 ### Packet Header in Case of Link Failure
 ```
-L2 Header | MPLS Header(s) | MPLS Header with Extension Label (15) | MPLS Destination Header | TI-MFA Header(s) | L3 Header
+L2 Header | MPLS Shim Header(s) | MPLS Shim Header with Extension Label (15) | TI-MFA Header(s) | L3 Header
 ```
 
 ### Link Failure Header (TI-MFA Header)
@@ -113,19 +107,19 @@ struct ti_mfa_shim_hdr {
 ```
 
 ## Tests
+
+The test topologies are configured with static routes.
+
 ### Testbed 1
 Vagrant boxes with the topology from [^1] :
 ```mermaid
 graph TB
-    t --- v_l
+    t   --- v_l
     v_l --- v_m
     v_m --- v_r
-    t --- v_m
-    t ---v_r
+    t   --- v_m
+    t   ---v_r
 ```
- * Problems:
-    + When using frr with ospf the routes to the directly connected nodes are not MPLS routes.
-
 ### Testbed 3
 Vagrant boxes with the topology from [^2] :
 ```mermaid
