@@ -61,16 +61,36 @@ function prepare {
     install
 }
 
-function test_scenario_1 {
-    local link_e_r
+function test_scenario_1_link_failure {
+    echo "Setting up link failure e_m"
 
-    link_e_r="$(get_ha T eth3)-$(get_ha R eth2)"
+    if_T="eth2"
+    if_M="eth2"
+    link_e_m="$(get_ha T "$if_T")-$(get_ha M "$if_M")"
+
+    vagrant ssh T -c "sudo ip link set $if_T down"
+    vagrant ssh M -c "sudo ip link set $if_M down"
+
+    vagrant ssh M -c "ti-mfa-conf add ${link_e_m} 1300 eth3"
+}
+
+function test_scenario_2_link_failures {
+    test_scenario_1_link_failure || true
+
+    echo "Setting up link failure e_r"
+
+    if_T="eth3"
+    if_R="eth2"
+    link_e_r="$(get_ha T "$if_T")-$(get_ha R "$if_R")"
+
+    vagrant ssh T -c "sudo ip link set $if_T down"
+    vagrant ssh R -c "sudo ip link set $if_R down"
 
     vagrant ssh R -c "ti-mfa-conf add ${link_e_r} 1200 eth1"
-    vagrant ssh T -c "sudo ip link set eth2 down"
-    vagrant ssh T -c "sudo ip link set eth3 down"
-    vagrant ssh M -c "sudo ip link set eth2 down"
-    vagrant ssh R -c "sudo ip link set eth2 down"
+}
+
+function test_received_packet {
+    local listen_interface="$1"
 
     # Send 1 packet to 10.200.200.1
     # a response is not expected
@@ -78,7 +98,7 @@ function test_scenario_1 {
     check_pid=$!
 
     # Check if packet arrives at T
-    vagrant ssh T -c 'sudo timeout 20 tcpdump -i eth1 -Q in -c 1 -vvv mpls'
+    vagrant ssh T -c 'sudo timeout 20 tcpdump -i '"$listen_interface"' -Q in -c 1 -vvv mpls'
     got_packet=$?
 
     wait $check_pid || true
@@ -86,5 +106,28 @@ function test_scenario_1 {
     exit $got_packet
 }
 
+function topo_test {
+    local listen_interface
+    case "$1" in
+        1 )
+            test_scenario_1_link_failure
+            listen_interface="eth1"
+            ;;
+        2 )
+            test_scenario_2_link_failures
+            listen_interface="eth1"
+            ;;
+        * ) exit 1 ;;
+    esac
+
+    test_received_packet "$listen_interface"
+}
+
 prepare || exit 1
-test_scenario_1
+
+if [[ -z "$1" ]]
+then
+    exit
+fi
+
+topo_test "$1"

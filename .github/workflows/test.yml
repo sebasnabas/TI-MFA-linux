@@ -24,4 +24,4 @@ jobs:
 
       - name: Run testbed 1 script
         working-directory: tests/integration/testbed_1
-        run: ./run.sh
+        run: ./run.sh 2
