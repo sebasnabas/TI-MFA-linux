@@ -126,7 +126,7 @@ static int initialize_hooks(void)
             return return_code;
         }
 
-        pr_debug("TI-MFA ingress hook successfully registered on device: %s!\n", dev->name);
+        pr_info("TI-MFA ingress hook registered on device: %s\n", dev->name);
         i++;
 
 next_dev:
