@@ -684,28 +684,13 @@ out_success:
 int run_ti_mfa(struct net *net, struct sk_buff *skb)
 {
     int return_code = TI_MFA_SUCCESS;
-    struct sk_buff *new_skb = NULL;
 
     if (is_not_mpls(skb))
     {
         return TI_MFA_PASS;
     }
 
-    /* Create new skbuff to be safe */
-    new_skb = skb_copy(skb, GFP_ATOMIC);
-    if (new_skb == NULL)
-    {
-        pr_debug("Copying skb failed on [%s]\n", skb->dev->name);
-        return TI_MFA_ERROR;
-    }
-
-    return_code = __run_ti_mfa(net, new_skb);
-
-
-    if (return_code == TI_MFA_ERROR)
-    {
-        kfree_skb(new_skb);
-    }
+    return_code = __run_ti_mfa(net, skb);
 
     return return_code;
 }
