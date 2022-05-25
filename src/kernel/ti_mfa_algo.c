@@ -588,8 +588,10 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     struct ethhdr ethh = *eth_hdr(skb);
 
     pr_debug("Got packet from %pM\n", ethh.h_source);
+    debug_print_packet(skb);
 
     mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
+    debug_print_packet(skb);
 
     if (mpls_label_count == 0) {
         pr_err("Got zero mpls labels\n");
