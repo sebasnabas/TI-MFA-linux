@@ -465,6 +465,9 @@ int set_new_label_stack(const struct net *net,struct sk_buff *skb,
     else
         link_failure_count = nh->link_failure_count;
 
+    if (nh->is_dest)
+        link_failure_count = 0;
+
     pr_debug("Setting new label stack. orig_label_count: %u\n", orig_label_count);
     /* TODO: Validate node computing <22-04-22> */
     for (i = 0; i < nh->labels; i++) {
@@ -491,6 +494,13 @@ int set_new_label_stack(const struct net *net,struct sk_buff *skb,
         new_label_stack[label_count] = entry;
         pr_debug("%u: set label: %u %s\n", label_count, new_label_stack[label_count].label, new_label_stack[label_count].bos ? "[S]" : "");
         label_count++;
+    }
+
+    if (nh->labels == 0 && orig_label_path > 0) {
+        for (i = 0; i < orig_label_count; ++i) {
+            new_label_stack[i] = orig_label_path[i];
+            label_count++;
+        }
     }
 
     if (link_failure_count > 0)
@@ -617,33 +627,19 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
         goto out_error;
 
     if (next_hop.is_dest && next_hop.labels == 0 && next_hop.link_failure_count == 0) {
-        enum mpls_payload_type payload_type;
+        struct ethhdr *new_eth;
 
-        if (!pskb_may_pull(skb, 12)) {
-            pr_err("Cannot pull ip header\n");
-            goto out_error;
-        }
+        rcu_read_unlock();
 
-        payload_type = ip_hdr(skb)->version;
-        skb->dev = next_hop.dev;
+        set_mpls_header(skb, mpls_label_count, label_stack, false);
 
-        pr_debug("Found no local link failures -> Penultimate hop popping\n");
-        pr_debug("Payload type: %d\n", payload_type);
+        new_eth = eth_hdr(skb);
+        *new_eth = ethh;
 
-        switch(payload_type) {
-            case MPT_IPV4: {
-                skb->protocol = htons(ETH_P_IP);
-                break;
-            }
-            case MPT_IPV6: {
-                skb->protocol = htons(ETH_P_IPV6);
-                break;
-            }
-            default:
-                pr_err("Unspec\n");
-                skb->protocol = htons(ETH_P_IP);
-                break;
-        }
+        pr_debug("OUT\n");
+        debug_print_packet(skb);
+
+        return TI_MFA_PASS;
     }
     else  {
         if ((next_hop.dev == NULL || next_hop.dev == skb->dev) && is_zero_ether_addr(next_hop.ha)) {
