@@ -601,7 +601,6 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     debug_print_packet(skb);
 
     mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
-    debug_print_packet(skb);
 
     if (mpls_label_count == 0) {
         pr_err("Got zero mpls labels\n");
@@ -660,6 +659,9 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     skb_reset_mac_header(skb);
 
     ethh = *eth_hdr(skb);
+
+    debug_print_packet(skb);
+
     pr_debug("Eth dest: %pM, src: %pM\n", ethh.h_dest, ethh.h_source);
     pr_debug("<== xmit via %s ==>\n", skb->dev->name);
 
