@@ -429,7 +429,10 @@ bool set_link_failure_stack(struct sk_buff *skb, const uint count,
         struct ti_mfa_shim_hdr ti_mfa_entry = link_failures[i];
         hdr[i] = ti_mfa_entry;
         hdr[i].bos = bos;
-        ether_addr_copy(hdr[i].node_source, skb->dev->dev_addr);
+
+        if (is_zero_ether_addr(ti_mfa_entry.node_source)) {
+            ether_addr_copy(hdr[i].node_source, skb->dev->dev_addr);
+        }
 
         pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM%s\n", i, hdr[i].node_source, hdr[i].link.source, hdr[i].link.dest, hdr[i].bos ? " [S]" : "");
         bos = false;
