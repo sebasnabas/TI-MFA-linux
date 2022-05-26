@@ -350,6 +350,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
     if (reroute_count > 0 || (next_hop->labels == 0 && !next_hop->is_dest)) {
         next_hop->label[next_hop->labels] = original_destination;
         next_hop->labels++;
+        next_hop->is_dest = false;
     }
 
     debug_print_next_hop(*next_hop);
@@ -465,8 +466,10 @@ int set_new_label_stack(const struct net *net,struct sk_buff *skb,
     else
         link_failure_count = nh->link_failure_count;
 
-    if (nh->is_dest)
+    if (nh->is_dest) {
         link_failure_count = 0;
+        pr_debug("Next hop is destination. Not setting link failures\n");
+    }
 
     pr_debug("Setting new label stack. orig_label_count: %u\n", orig_label_count);
     /* TODO: Validate node computing <22-04-22> */
