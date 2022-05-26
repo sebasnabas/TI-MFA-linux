@@ -466,11 +466,6 @@ int set_new_label_stack(const struct net *net,struct sk_buff *skb,
     else
         link_failure_count = nh->link_failure_count;
 
-    if (nh->is_dest) {
-        link_failure_count = 0;
-        pr_debug("Next hop is destination. Not setting link failures\n");
-    }
-
     pr_debug("Setting new label stack. orig_label_count: %u\n", orig_label_count);
     /* TODO: Validate node computing <22-04-22> */
     for (i = 0; i < nh->labels; i++) {
