@@ -785,6 +785,7 @@ void ti_mfa_ifdown(struct net_device *dev)
                 else
                     ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
 
+                pr_debug("nh labels: %d\n", nh->nh_labels);
                 for (j = 0; j < nh->nh_labels; j++) {
                     uint index = j + deleted_neighs[tmp]->label_count;
                     uint k = 0;
@@ -801,6 +802,13 @@ void ti_mfa_ifdown(struct net_device *dev)
                     deleted_neighs[tmp]->labels[index] = nh->nh_label[j];
                     pr_debug("Added label %u\n", deleted_neighs[tmp]->labels[index]);
                 }
+
+                if (nh->nh_labels == 0) {
+                    deleted_neighs[tmp]->labels[j] = label_index;
+                    pr_debug("Added label [%d] = %u\n", j, deleted_neighs[tmp]->labels[j]);
+                    deleted_neighs[tmp]->label_count++;
+                }
+
                 pr_debug("Added neigh %u: %pM\n", tmp, deleted_neighs[tmp]->ha);
                 deleted_neighs[tmp]->label_count += j;
                 tmp++;
