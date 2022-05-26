@@ -598,7 +598,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     struct ti_mfa_nh next_hop;
     struct ethhdr ethh = *eth_hdr(skb);
 
-    pr_debug("Got packet from %pM\n", ethh.h_source);
+    pr_debug("==> rcv on %s from %pM\n", skb->dev->name, ethh.h_source);
     debug_print_packet(skb);
 
     mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
@@ -664,7 +664,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     debug_print_packet(skb);
 
     pr_debug("Eth dest: %pM, src: %pM\n", ethh.h_dest, ethh.h_source);
-    pr_debug("<== xmit via %s ==>\n", skb->dev->name);
+    pr_debug("xmit via %s ==>\n", skb->dev->name);
 
     if (dev_queue_xmit(skb) != NET_XMIT_SUCCESS)
     {
@@ -727,7 +727,7 @@ void ti_mfa_ifdown(struct net_device *dev)
                     neigh = __ipv4_neigh_lookup_noref(nh->nh_dev, neigh_index);
                     break;
                 default:
-                    // @TODO: Support for IPv6
+                    // TODO: Support for IPv6
                     break;
             }
 
