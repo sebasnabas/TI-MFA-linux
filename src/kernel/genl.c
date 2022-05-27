@@ -72,13 +72,13 @@ static void extract_ti_mfa_attrs(const struct genl_info *info, struct ti_mfa_par
     a->backup_dev_name = (char *) extract_nl_attr(info, TI_MFA_A_BACKUP_DEV_NAME);
 }
 
-static void print_attributes(struct ti_mfa_param *ti_mfa_attr)
+static void debug_print_attributes(struct ti_mfa_param *ti_mfa_attr)
 {
-    if (ti_mfa_attr->link_source     != NULL) pr_info("Source: %pM\n", ti_mfa_attr->link_source->oct);
-    if (ti_mfa_attr->link_dest       != NULL) pr_info("Dest: %pM\n", ti_mfa_attr->link_dest->oct);
+    if (ti_mfa_attr->link_source     != NULL) pr_debug("Source: %pM\n", ti_mfa_attr->link_source->oct);
+    if (ti_mfa_attr->link_dest       != NULL) pr_debug("Dest: %pM\n", ti_mfa_attr->link_dest->oct);
 
-    if (ti_mfa_attr->dest            != NULL) pr_info("Label: %u\n", ti_mfa_attr->dest->label);
-    if (ti_mfa_attr->backup_dev_name != NULL) pr_info("NetDev: %s\n", ti_mfa_attr->backup_dev_name);
+    if (ti_mfa_attr->dest            != NULL) pr_debug("Label: %u\n", ti_mfa_attr->dest->label);
+    if (ti_mfa_attr->backup_dev_name != NULL) pr_debug("NetDev: %s\n", ti_mfa_attr->backup_dev_name);
 }
 
 static int send_response(struct genl_info *info, unsigned int n_data,
@@ -159,7 +159,7 @@ static int ti_mfa_genl_add(struct sk_buff *skb, struct genl_info *info)
 {
     struct ti_mfa_param attr;
     extract_ti_mfa_attrs(info, &attr);
-    print_attributes(&attr);
+    debug_print_attributes(&attr);
 
     return add_backup_route(attr, info);
 }
@@ -253,7 +253,7 @@ static int ti_mfa_genl_del(struct sk_buff *skb, struct genl_info *info)
 {
     struct ti_mfa_param attr;
     extract_ti_mfa_attrs(info, &attr);
-    print_attributes(&attr);
+    debug_print_attributes(&attr);
 
     return del_backup_route(attr, info);
 }
@@ -267,7 +267,7 @@ static int ti_mfa_genl_show(struct sk_buff *skb, struct genl_info *info)
     struct ti_mfa_param attr;
     struct genl_msg_data data[1];
     extract_ti_mfa_attrs(info, &attr);
-    print_attributes(&attr);
+    debug_print_attributes(&attr);
 
     ret = show_all_routes(info);
 
@@ -284,7 +284,7 @@ static int ti_mfa_genl_flush(struct sk_buff * skb, struct genl_info * info)
 {
     struct ti_mfa_param attr;
     extract_ti_mfa_attrs(info, &attr);
-    print_attributes(&attr);
+    debug_print_attributes(&attr);
 
     return flush_routes(attr, info);
 }

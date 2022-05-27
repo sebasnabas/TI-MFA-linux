@@ -68,6 +68,7 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff *skb,
     switch(run_ti_mfa(state->net, skb))
     {
         case TI_MFA_SUCCESS:
+            pr_debug("NF_STOLEN\n");
             exit_code = NF_STOLEN;
             break;
 
@@ -78,12 +79,10 @@ static unsigned int timfa_ingress_hook(void *priv, struct sk_buff *skb,
 
         /* Handling TI_MFA_PASS */
         default:
+            pr_debug("NF_ACCEPT\n");
             exit_code = NF_ACCEPT;
             break;
     }
-
-    if (exit_code == NF_STOLEN)
-        kfree_skb(skb);
 
 exit:
     return exit_code;
@@ -127,7 +126,7 @@ static int initialize_hooks(void)
             return return_code;
         }
 
-        pr_debug("TI-MFA ingress hook successfully registered on device: %s!\n", dev->name);
+        pr_info("TI-MFA ingress hook registered on device: %s\n", dev->name);
         i++;
 
 next_dev:

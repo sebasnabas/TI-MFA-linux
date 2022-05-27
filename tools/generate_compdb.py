@@ -96,6 +96,14 @@ def gen_compile_commands(cmd_file_search_path, out_dir):
         pool.terminate()
         pool.join()
 
+    ti_mfa_conf_dir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'src', 'ti-mfa-conf'))
+    compdb.append({
+        'directory': ti_mfa_conf_dir,
+        'command': 'gcc -Wall -o ti-mfa-conf',
+        'file': os.path.join(ti_mfa_conf_dir, 'ti_mfa_conf.c'),
+        'output': ti_mfa_conf_dir
+    })
+
     print(file=sys.stderr)
     print("Writing compile_commands.json...", file=sys.stderr)
 

@@ -71,3 +71,49 @@ void debug_print_next_hop(struct ti_mfa_nh nh) {
 
     pr_debug("%s", msg);
 }
+
+void __debug_print_packet(struct sk_buff *skb)
+{
+    size_t len;
+    int rowsize = 16;
+    int i, l, remaining;
+    int li = 0;
+    uint8_t *data, ch;
+
+    printk("Packet hex dump:\n");
+    data = (uint8_t *) skb_mac_header(skb);
+
+    if (skb_is_nonlinear(skb)) {
+        len = skb->data_len;
+    } else {
+        len = skb->len;
+    }
+
+    remaining = len;
+    for (i = 0; i < len; i += rowsize) {
+        int linelen = 0;
+        printk("%06d\t", li);
+
+        linelen = min(remaining, rowsize);
+        remaining -= rowsize;
+
+        for (l = 0; l < linelen; l++) {
+            ch = data[l];
+            printk(KERN_CONT "%02X ", (uint32_t) ch);
+        }
+
+        data += linelen;
+        li += 10;
+
+        printk(KERN_CONT "\n");
+    }
+}
+
+void debug_print_packet(struct sk_buff *skb)
+{
+#ifdef DEBUG
+    __debug_print_packet(skb);
+#else
+    return;
+#endif
+}
