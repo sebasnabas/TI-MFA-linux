@@ -1,4 +1,6 @@
 # TI-MFA-linux
+![build](https://github.com/sebasnabas/TI-MFA-linux/actions/workflows/build.yml/badge.svg)
+![test](https://github.com/sebasnabas/TI-MFA-linux/actions/workflows/test.yml/badge.svg)
 
 **Note:** TI-MFA is currently only implemented for MPLS. Srv6 is not supported (yet).
 
