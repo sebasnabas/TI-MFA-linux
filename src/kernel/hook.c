@@ -123,21 +123,21 @@ static int initialize_hooks(void)
         if (return_code < 0)
         {
             pr_err("Registering ingress hook failed for device %s, with %d\n", dev->name, return_code);
-            return return_code;
+
+            goto exit;
         }
 
         pr_info("TI-MFA ingress hook registered on device: %s\n", dev->name);
         i++;
-
-next_dev:
         dev = next_net_device(dev);
     }
 
+    pr_debug("Registering %d hooks succeeded\n", number_of_timfa_hooks);
+
+exit:
     read_unlock(&dev_base_lock);
 
     number_of_timfa_hooks = i;
-
-    pr_debug("Registering %d hooks succeeded\n", number_of_timfa_hooks);
 
     return return_code;
 }
