@@ -107,10 +107,6 @@ static int initialize_hooks(void)
 
     while (dev)
     {
-        if (strcmp(dev->name, "lo") == 0) {
-            goto next_dev;
-        }
-
         // START Ingress
         timfa_hooks[i].hook = timfa_ingress_hook;
         timfa_hooks[i].hooknum = NF_NETDEV_INGRESS;
