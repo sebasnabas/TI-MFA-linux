@@ -15,14 +15,14 @@ jobs:
         id: vagrant-base-box-cache
         with:
           path: ~/.vagrant.d/boxes
-          key: ${{ runner.os }}-vagrant-${{ hashFiles('tests/unit/Vagrantfile') }}
+          key: ${{ runner.os }}-vagrant-${{ hashFiles('tests/build/Vagrantfile') }}
           restore-keys: |
             ${{ runner.os }}-vagrant-
 
       - name: Build vagrant box && Restart for new kernel
-        working-directory: tests/unit
+        working-directory: tests/build
         run: vagrant up && vagrant reload
 
       - name: Compile code
-        working-directory: tests/unit
+        working-directory: tests/build
         run: vagrant ssh -c "cd ti-mfa-src && make all"

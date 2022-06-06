@@ -8,6 +8,7 @@ Vagrant.configure("2") do |config|
     virtualbox.memory = "512"
     virtualbox.cpus = "1"
   end
+  config.vm.boot_timeout = 600
 
   config.vm.provision "shell", inline: "apt-get update && apt-get install gcc cmake linux-image-amd64 linux-headers-amd64 --yes"
 
