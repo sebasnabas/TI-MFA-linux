@@ -93,6 +93,8 @@ function test_scenario_2_link_failures {
 function test_received_packet {
     local listen_interface="$1"
 
+    vagrant ssh T -c 'ip route && ip -M route'
+
     # Send 1 packet to 10.200.200.1
     # and wait for response
     vagrant ssh M -c 'sleep 5 && ping -c 1 10.200.200.1'
