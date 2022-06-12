@@ -93,17 +93,8 @@ function test_received_packet {
     local listen_interface="$1"
 
     # Send 1 packet to 10.200.200.1
-    # a response is not expected
-    vagrant ssh M -c 'sleep 5 && ping -c 1 10.200.200.1' &
-    check_pid=$!
-
-    # Check if packet arrives at T
-    vagrant ssh T -c 'sudo timeout 20 tcpdump -i '"$listen_interface"' -Q in -c 1 -vvv mpls'
-    got_packet=$?
-
-    wait $check_pid || true
-
-    exit $got_packet
+    # and wait for response
+    vagrant ssh M -c 'sleep 5 && ping -c 1 10.200.200.1'
 }
 
 function topo_test {
