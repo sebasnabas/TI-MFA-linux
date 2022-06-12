@@ -83,10 +83,11 @@ function test_scenario_2_link_failures {
     if_R="eth2"
     link_e_r="$(get_ha T "$if_T")-$(get_ha R "$if_R")"
 
+    vagrant ssh M -c "ti-mfa-conf add ${link_e_r} 1200 eth1"
+
     vagrant ssh T -c "sudo ip link set $if_T down"
     vagrant ssh R -c "sudo ip link set $if_R down"
 
-    vagrant ssh M -c "ti-mfa-conf add ${link_e_r} 1200 eth1"
 }
 
 function test_received_packet {
