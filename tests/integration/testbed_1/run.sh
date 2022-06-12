@@ -83,27 +83,21 @@ function test_scenario_2_link_failures {
     if_R="eth2"
     link_e_r="$(get_ha T "$if_T")-$(get_ha R "$if_R")"
 
+    vagrant ssh M -c "ti-mfa-conf add ${link_e_r} 1200 eth1"
+
     vagrant ssh T -c "sudo ip link set $if_T down"
     vagrant ssh R -c "sudo ip link set $if_R down"
 
-    vagrant ssh R -c "ti-mfa-conf add ${link_e_r} 1200 eth1"
 }
 
 function test_received_packet {
     local listen_interface="$1"
 
+    vagrant ssh T -c 'ip route && ip -M route'
+
     # Send 1 packet to 10.200.200.1
-    # a response is not expected
-    vagrant ssh M -c 'sleep 5 && ping -c 1 10.200.200.1' &
-    check_pid=$!
-
-    # Check if packet arrives at T
-    vagrant ssh T -c 'sudo timeout 20 tcpdump -i '"$listen_interface"' -Q in -c 1 -vvv mpls'
-    got_packet=$?
-
-    wait $check_pid || true
-
-    exit $got_packet
+    # and wait for response
+    vagrant ssh M -c 'sleep 5 && ping -c 1 10.200.200.1'
 }
 
 function topo_test {
