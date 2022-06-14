@@ -597,7 +597,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     pr_debug("==> rcv on %s from %pM\n", skb->dev->name, ethh.h_source);
     debug_print_packet(skb);
 
-    mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
+    mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS, false);
 
     if (mpls_label_count == 0) {
         pr_err("Got zero mpls labels\n");
