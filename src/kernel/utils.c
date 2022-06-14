@@ -34,10 +34,10 @@ static void add_link_failures(char *msg, uint link_failure_count,
     uint i = 0;
     for (i = 0; i < link_failure_count; ++i) {
         struct ti_mfa_shim_hdr link_failure = link_failures[i];
-        sprintf(msg+ strlen(msg), "\t\t %u: %pM <-> %pM %s\n",
+        sprintf(msg+ strlen(msg), "\t\t %u: %pM <-> %pM \n\t\t\t from %pM %s\n",
                 i, link_failure.link.source,
                 link_failure.link.dest,
-                link_failure.bos ? "[S]" : "");
+                link_failure.node_source, link_failure.bos ? "[S]" : "");
     }
 }
 

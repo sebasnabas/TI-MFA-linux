@@ -31,9 +31,7 @@ uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_f
     do {
         memmove(&link_failures[count], &link_failure_entry[count], sizeof(struct ti_mfa_shim_hdr));
 
-        pr_debug("Link failure: link source: %pM, link dest: %pM %s\n",
-                link_failures[count].link.source, link_failures[count].link.dest,
-                link_failures[count].bos ? "[S]" : "");
+        pr_debug("Link failure: node source: %pM, link source: %pM, link dest: %pM %s\n", link_failures[count].node_source, link_failures[count].link.source, link_failures[count].link.dest, link_failures[count].bos ? "[S]" : "");
         count++;
 
         if (count > max)
@@ -58,14 +56,14 @@ static bool is_link_failure(const struct ti_mfa_link link, const uint link_failu
         struct ti_mfa_shim_hdr link_failure = link_failures[i];
 
         bool src_on_failed_link = !is_zero_ether_addr(link.source) &&
-            (
-             ether_addr_equal(link.source, link_failure.link.source)
-             || ether_addr_equal(link.source, link_failure.link.dest)
+            (ether_addr_equal(link.source, link_failure.link.source)
+            || ether_addr_equal(link.source, link_failure.link.dest)
+            || ether_addr_equal(link.source, link_failure.node_source)
             );
         bool dest_on_failed_link = !is_zero_ether_addr(link.dest) &&
-            (
-             ether_addr_equal(link.dest, link_failure.link.source)
-             || ether_addr_equal(link.dest, link_failure.link.dest)
+            (ether_addr_equal(link.dest, link_failure.link.source)
+            || ether_addr_equal(link.dest, link_failure.link.dest)
+            || ether_addr_equal(link.dest, link_failure.node_source)
             );
 
         if (src_on_failed_link || dest_on_failed_link) {
@@ -407,6 +405,9 @@ void set_local_link_failures(const struct net *net,
         ether_addr_copy(next_hop->link_failures[link_failures].link.source, neigh->dev->dev_addr);
         ether_addr_copy(next_hop->link_failures[link_failures].link.dest, neigh->ha);
 
+        /* Setting link_failures[]->node_source to empty, because it's the same for all of them */
+        eth_zero_addr(next_hop->link_failures[link_failures].node_source);
+
         pr_debug("Adding link failure from %pM to %pM for label %u\n", next_hop->link_failures[link_failures].link.source, next_hop->link_failures[link_failures].link.dest, destination);
         link_failures++;
     }
@@ -429,8 +430,11 @@ bool set_link_failure_stack(struct sk_buff *skb, const uint count,
         hdr[i] = ti_mfa_entry;
         hdr[i].bos = bos;
 
-        pr_debug("%u: link source: %pM, link dest: %pM%s\n",
-                i, hdr[i].link.source, hdr[i].link.dest, hdr[i].bos ? " [S]" : "");
+        if (is_zero_ether_addr(ti_mfa_entry.node_source)) {
+            ether_addr_copy(hdr[i].node_source, skb->dev->dev_addr);
+        }
+
+        pr_debug("%u: node source: %pM, link source: %pM, link dest: %pM%s\n", i, hdr[i].node_source, hdr[i].link.source, hdr[i].link.dest, hdr[i].bos ? " [S]" : "");
         bos = false;
     }
 
