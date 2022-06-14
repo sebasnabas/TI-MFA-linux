@@ -64,8 +64,7 @@ void debug_print_mpls_entries(uint label_count, const struct mpls_entry_decoded 
 
 /* Step 1): Decode mpls labels, remove them from header and save them
 */
-uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[],
-                            int max_labels, bool flush)
+uint get_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels)
 {
     uint label_count = 0;
     struct mpls_shim_hdr *mpls_hdr_entry = mpls_hdr(skb);
@@ -81,12 +80,14 @@ uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_
         }
     } while (!mpls_entries[label_count - 1].bos);
 
-    if (flush) {
-        skb_pull(skb, sizeof(*mpls_hdr_entry) * label_count);
-        skb_reset_network_header(skb);
-    }
-
     return label_count;
+}
+
+void flush_mpls_label_stack(struct sk_buff *skb, uint label_count)
+{
+
+    skb_pull(skb, sizeof(struct mpls_shim_hdr) * label_count);
+    skb_reset_network_header(skb);
 }
 
 void set_mpls_header(struct sk_buff *skb, uint label_count, const struct mpls_entry_decoded new_label_stack[], bool add_extension_hdr)

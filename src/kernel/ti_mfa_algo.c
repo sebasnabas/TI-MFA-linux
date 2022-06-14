@@ -24,7 +24,7 @@
 static struct ti_mfa_neigh **deleted_neighs;
 static uint number_of_deleted_neighs;
 
-uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max)
+uint get_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_failures[], int max)
 {
     uint count = 0;
     struct ti_mfa_shim_hdr *link_failure_entry = ti_mfa_hdr(skb);
@@ -42,10 +42,13 @@ uint flush_link_failure_stack(struct sk_buff *skb, struct ti_mfa_shim_hdr link_f
         }
     } while (!link_failures[count - 1].bos);
 
-    skb_pull(skb, sizeof(*link_failure_entry) * count);
-    skb_reset_network_header(skb);
-
     return count;
+}
+
+void flush_link_failure_stack(struct sk_buff *skb, uint link_failure_count)
+{
+    skb_pull(skb, sizeof(struct ti_mfa_shim_hdr) * link_failure_count);
+    skb_reset_network_header(skb);
 }
 
 static bool is_link_failure(const struct ti_mfa_link link, const uint link_failure_count, const struct ti_mfa_shim_hdr link_failures[])
@@ -597,7 +600,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     pr_debug("==> rcv on %s from %pM\n", skb->dev->name, ethh.h_source);
     debug_print_packet(skb);
 
-    mpls_label_count = flush_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS, false);
+    mpls_label_count = get_mpls_label_stack(skb, label_stack, MAX_NEW_LABELS);
 
     if (mpls_label_count == 0) {
         pr_err("Got zero mpls labels\n");
@@ -609,7 +612,7 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
         mpls_label_count--;
         destination = label_stack[mpls_label_count - 1];
 
-        link_failure_count = flush_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
+        link_failure_count = get_link_failure_stack(skb, link_failures, MAX_NEW_LABELS);
     }
 
     pr_debug("Label Stack: (%u Labels)\n", mpls_label_count);
@@ -618,6 +621,16 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
     rcu_read_lock();
 
     set_local_link_failures(net, link_failures, link_failure_count, destination.label, &next_hop);
+
+    if (next_hop.link_failure_count == 0) {
+        goto out_pass;
+    }
+
+    flush_mpls_label_stack(skb, mpls_label_count);
+
+    if (link_failure_count > 0) {
+        flush_link_failure_stack(skb, link_failure_count);
+    }
 
     if (get_shortest_path(net, destination.label, link_failures, link_failure_count, &next_hop) != 0)
         goto out_error;
@@ -673,6 +686,10 @@ int __run_ti_mfa(struct net *net, struct sk_buff *skb)
 out_error:
     rcu_read_unlock();
     return TI_MFA_ERROR;
+
+out_pass:
+    rcu_read_unlock();
+    return TI_MFA_PASS;
 
 out_success:
     return TI_MFA_SUCCESS;
