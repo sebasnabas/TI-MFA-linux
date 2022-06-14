@@ -128,7 +128,7 @@ static int initialize_hooks(void)
         dev = next_net_device(dev);
     }
 
-    pr_debug("Registering %d hooks succeeded\n", number_of_timfa_hooks);
+    pr_debug("Registering %d hooks succeeded\n", i);
 
 exit:
     read_unlock(&dev_base_lock);
