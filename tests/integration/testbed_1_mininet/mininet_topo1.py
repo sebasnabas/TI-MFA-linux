@@ -19,61 +19,64 @@ class LinuxMPLSRouter( Node ):
         super().config( **params )
         # Enable forwarding on the router
         self.cmd( 'sysctl net.ipv4.ip_forward=1' )
+        self.cmd( 'sysctl net.ipv4.conf.all.forwarding=1' )
 
         # Load mpls kernel modules
         self.cmd('modprobe mpls_router')
         self.cmd('modprobe mpls_iptunnel')
+        self.cmd('modprobe mpls_gso')
 
         # Enable MPLS
         for interface in self.intfNames():
             self.cmd(f"sysctl net.mpls.conf.{interface}.input=1")
 
+        self.cmd('sysctl net.mpls.conf.lo.input=1')
         self.cmd('sysctl net.mpls.platform_labels=100000')
 
     def terminate( self ):
         self.cmd( 'sysctl net.ipv4.ip_forward=0' )
+        self.cmd( 'sysctl net.ipv4.conf.all.forwarding=0' )
         super().terminate()
 
+DEFAULT_LOOPBACK_IP_PREFIX = '10.200.200.'
 
 class NetworkTopo( Topo ):
     # pylint: disable=arguments-differ
     def build( self, **_ ):
 
-        # default_ip_prefix = '10.200.200.'
-# , ip=f"{default_ip_prefix}{i + 1}"
         node_t, node_l, node_m, node_r = [
             self.addNode(s, cls=LinuxMPLSRouter, ip=None)
-            for i, s in enumerate(( 'T', 'L', 'M', 'R' ))
+            for s in ( 'T', 'L', 'M', 'R' )
         ]
 
         info('*** Adding links\n')
         self.addLink(node1=node_t, node2=node_l,
-                     params1={ 'ip': '192.168.1.11/32' }, params2={ 'ip': '192.168.1.12/32' },
-                     intfName1='T-L_eth1', intfName2='L-T_eth1')
+                     params1={ 'ip': '192.168.1.11/24' }, params2={ 'ip': '192.168.1.12/24' },
+                     intfName1='eth1', intfName2='eth1')
 
         self.addLink(node1=node_t, node2=node_m,
-                     params1={ 'ip': '192.168.2.11/32' }, params2={ 'ip': '192.168.2.13/32' },
-                     intfName1='T-M_eth2', intfName2='M-T_eth2')
+                     params1={ 'ip': '192.168.2.11/24' }, params2={ 'ip': '192.168.2.13/24' },
+                     intfName1='eth2', intfName2='eth2')
 
         self.addLink(node1=node_t, node2=node_r,
-                     params1={ 'ip': '192.168.3.11/32' }, params2={ 'ip': '192.168.3.14/32' },
-                     intfName1='T-R_eth3', intfName2='R-T_eth2')
+                     params1={ 'ip': '192.168.3.11/24' }, params2={ 'ip': '192.168.3.14/24' },
+                     intfName1='eth3', intfName2='eth2')
 
         self.addLink(node1=node_l, node2=node_m,
-                     params1={ 'ip': '192.168.4.12/32' }, params2={ 'ip': '192.168.4.13/32' },
-                     intfName1='L-M_eth2', intfName2='M-L_eth1')
+                     params1={ 'ip': '192.168.4.12/24' }, params2={ 'ip': '192.168.4.13/24' },
+                     intfName1='eth2', intfName2='eth1')
 
         self.addLink(node1=node_m, node2=node_r,
-                     params1={ 'ip': '192.168.5.13/32' }, params2={ 'ip': '192.168.5.14/32' },
-                     intfName1='M-R_eth3', intfName2='R-M_eth1')
+                     params1={ 'ip': '192.168.5.13/24' }, params2={ 'ip': '192.168.5.14/24' },
+                     intfName1='eth3', intfName2='eth1')
 
 def run():
     topo = NetworkTopo()
     net = Mininet( topo=topo,
-                   waitConnected=True )  # controller is used by s1-s3
+                   waitConnected=True )
     net.start()
 
-    info('*** Loading routes')
+    info('*** Loading routes\n')
 
     static_route_file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      'static_routes.json')
@@ -82,17 +85,18 @@ def run():
             static_routes = json.load(static_route_file)
 
             for i, (node, route_config) in enumerate(static_routes.items()):
-                # net[node].setIP(f"10.200.200.{i}", intf='lo')
+                info(f"* {node}:\n")
+                net[node].cmd(f'ip addr add "{DEFAULT_LOOPBACK_IP_PREFIX}{i + 1}" dev lo')
 
                 for option, routes in route_config.items():
                     for route in routes:
-                        net[node].cmd(f"ip route {option} add {route}")
+                        route_cmd = f"ip {option} route add {route}"
+                        info(f"\t# {route_cmd}\n")
+                        net[node].cmd(route_cmd)
     except Exception as err:   # pylint: disable=broad-except
         net.stop()
         sys.exit(err)
 
-    info( '*** Routing Table on Router:\n' )
-    info( net[ 'T' ].cmd( 'route' ) )
     CLI( net )
     net.stop()
 
