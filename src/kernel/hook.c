@@ -38,7 +38,7 @@ struct ti_mfa_nf_hook {
     struct hlist_node  hnode;
 };
 
-static unsigned int timfa_ingress_hook(void *priv, struct sk_buff *skb,
+static unsigned int ti_mfa_ingress_hook(void *priv, struct sk_buff *skb,
                                        const struct nf_hook_state *state)
 {
     unsigned int exit_code = NF_ACCEPT;
@@ -85,7 +85,7 @@ static int ti_mfa_register_nf_hook(struct net *net, struct net_device *dev)
         pr_err("Could not allocate memory for new hook entry\n");
         return -ENOMEM;
     }
-    hook->nf_hook.hook = timfa_ingress_hook;
+    hook->nf_hook.hook = ti_mfa_ingress_hook;
     hook->nf_hook.hooknum = NF_NETDEV_INGRESS;
     hook->nf_hook.pf = NFPROTO_NETDEV;
     hook->nf_hook.priority = NF_IP_PRI_LAST;
@@ -195,7 +195,7 @@ static void unregister_hooks(void)
     }
 }
 
-static int __init timfa_init(void)
+static int __init ti_mfa_init(void)
 {
     int err = 0;
 
@@ -236,7 +236,7 @@ out_unregister:
 
 }
 
-static void __exit timfa_exit(void)
+static void __exit ti_mfa_exit(void)
 {
     pr_debug("TI-MFA shutting down\n");
 
@@ -248,5 +248,5 @@ static void __exit timfa_exit(void)
     pr_info("TI-MFA shut down\n");
 }
 
-module_init(timfa_init);
-module_exit(timfa_exit);
+module_init(ti_mfa_init);
+module_exit(ti_mfa_exit);
