@@ -702,7 +702,7 @@ void ti_mfa_ifdown(struct net_device *dev)
     struct net *net = dev_net(dev);
     unsigned label_index = 0, tmp = number_of_deleted_neighs;
 
-    if (!dev)
+    if (dev == NULL || net == NULL)
         return;
 
     pr_debug("ifdown for dev %s\n", dev->name);
@@ -710,7 +710,7 @@ void ti_mfa_ifdown(struct net_device *dev)
     platform_label = rtnl_dereference(net->mpls.platform_label);
     for (label_index = 0; label_index < net->mpls.platform_labels; label_index++) {
         struct mpls_route *rt = rtnl_dereference(platform_label[label_index]);
-        if (!rt)
+        if (rt == NULL)
             continue;
 
         for_nexthops(rt) {
@@ -729,6 +729,10 @@ void ti_mfa_ifdown(struct net_device *dev)
                 default:
                     // TODO: Support for IPv6
                     break;
+            }
+
+            if (neigh == NULL) {
+                continue;
             }
 
             if (number_of_deleted_neighs > 0 && number_of_deleted_neighs % DELETED_NEIGHS_INITIAL_SIZE == 0) {
@@ -764,8 +768,10 @@ void ti_mfa_ifdown(struct net_device *dev)
                             found = true;
                             break;
                         }
+
                         if (found)
                             continue;
+
                         deleted_neigh->labels[index] = nh->nh_label[j];
                         pr_debug("Added label %u\n", deleted_neigh->labels[index]);
                     }
@@ -775,6 +781,7 @@ void ti_mfa_ifdown(struct net_device *dev)
                 }
             }
 
+            pr_debug("Not found\n");
             if (!found_deleted_neigh) {
                 uint j = 0;
                 deleted_neighs[tmp] = kzalloc(sizeof(struct ti_mfa_neigh), GFP_KERNEL);
@@ -816,6 +823,7 @@ void ti_mfa_ifdown(struct net_device *dev)
             }
         } endfor_nexthops(rt);
     }
+
     number_of_deleted_neighs = tmp;
     pr_debug("deleted_neighs: %u\n", number_of_deleted_neighs);
 }
