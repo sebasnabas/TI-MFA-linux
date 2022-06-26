@@ -130,6 +130,7 @@ static int ti_mfa_notify(struct notifier_block *this, unsigned long event, void 
 
         case NETDEV_UP:
             ti_mfa_ifup(dev);
+            break;
 
         case NETDEV_REGISTER:
             ti_mfa_register_nf_hook(net, dev);
