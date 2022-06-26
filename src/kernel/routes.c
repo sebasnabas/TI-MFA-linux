@@ -114,7 +114,7 @@ int rt_del(struct ti_mfa_route rt)
                     found_rt->link.dest, found_rt->destination_label);
             hash_del_rcu(&found_rt->hnode);
 
-            /* TODO: Figure out how to avoid freeze on free <19-04-22> */
+            /* FIXME: Figure out how to avoid freeze on free <19-04-22> */
             /* kfree(found_rt); */
             ret = TI_MFA_RT_OK;
         }
