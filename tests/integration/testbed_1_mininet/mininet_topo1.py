@@ -52,23 +52,23 @@ class NetworkTopo( Topo ):
         info('*** Adding links\n')
         self.addLink(node1=node_t, node2=node_l,
                      params1={ 'ip': '192.168.1.11/24' }, params2={ 'ip': '192.168.1.12/24' },
-                     intfName1='eth1', intfName2='eth1')
+                     intfName1=f"{node_t}-eth1", intfName2=f"{node_l}-eth1")
 
         self.addLink(node1=node_t, node2=node_m,
                      params1={ 'ip': '192.168.2.11/24' }, params2={ 'ip': '192.168.2.13/24' },
-                     intfName1='eth2', intfName2='eth2')
+                     intfName1=f"{node_t}-eth2", intfName2=f"{node_m}-eth2")
 
         self.addLink(node1=node_t, node2=node_r,
                      params1={ 'ip': '192.168.3.11/24' }, params2={ 'ip': '192.168.3.14/24' },
-                     intfName1='eth3', intfName2='eth2')
+                     intfName1=f"{node_t}-eth3", intfName2=f"{node_r}-eth2")
 
         self.addLink(node1=node_l, node2=node_m,
                      params1={ 'ip': '192.168.4.12/24' }, params2={ 'ip': '192.168.4.13/24' },
-                     intfName1='eth2', intfName2='eth1')
+                     intfName1=f"{node_l}-eth2", intfName2=f"{node_m}-eth1")
 
         self.addLink(node1=node_m, node2=node_r,
                      params1={ 'ip': '192.168.5.13/24' }, params2={ 'ip': '192.168.5.14/24' },
-                     intfName1='eth3', intfName2='eth1')
+                     intfName1=f"{node_m}-eth3", intfName2=f"{node_r}-eth1")
 
 def run():
     topo = NetworkTopo()
