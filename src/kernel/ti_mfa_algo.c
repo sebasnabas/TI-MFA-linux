@@ -830,6 +830,7 @@ void ti_mfa_ifdown(struct net_device *dev)
 
 void ti_mfa_ifup(const struct net_device *dev)
 {
+    /* FIXME: Use hash table for link failures instead <26-06-22> */
     struct ti_mfa_neigh **tmp = kcalloc(DELETED_NEIGHS_INITIAL_SIZE, sizeof(struct ti_mfa_neigh *), GFP_KERNEL);
     uint i = 0, j = 0;
 
