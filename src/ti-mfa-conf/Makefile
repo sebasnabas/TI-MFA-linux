@@ -8,4 +8,4 @@ install: default
 	sudo cp -f ti-mfa-conf /usr/bin
 
 deinstall:
-	sudo rm /usr/bin/ti-mfa-conf || true
+	[ -f /usr/bin/ti-mfa-conf ] && sudo rm /usr/bin/ti-mfa-conf
