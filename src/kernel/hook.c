@@ -38,7 +38,7 @@ static int ti_mfa_notify(struct notifier_block *this, unsigned long event, void 
         return NOTIFY_OK;
 
     switch (event) {
-        case NETDEV_GOING_DOWN:
+        case NETDEV_DOWN:
             ti_mfa_ifdown(dev);
             break;
 
