@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
+import argparse
 import json
 import os
 import sys
+
+from subprocess import call
 
 from mininet.topo import Topo
 from mininet.net import Mininet
@@ -70,7 +73,7 @@ class NetworkTopo( Topo ):
                      params1={ 'ip': '192.168.5.13/24' }, params2={ 'ip': '192.168.5.14/24' },
                      intfName1=f"{node_m}-eth3", intfName2=f"{node_r}-eth1")
 
-def run():
+def run(interactive=False):
     topo = NetworkTopo()
     net = Mininet( topo=topo,
                    waitConnected=True )
@@ -97,10 +100,41 @@ def run():
         net.stop()
         sys.exit(err)
 
-    CLI( net )
-    net.stop()
 
+    try:
+        net.pingAll()
+        if interactive:
+            CLI(net)
+
+        else:
+            call('cd /home/vagrant/ti-mfa-src; make install; popd', shell=True)
+
+            net.configLinkStatus('M', 'T', status='down')
+            net.configLinkStatus('R', 'T', status='down')
+
+            ti_mfa_conf(mac1=net['M'].nameToIntf['M-eth2'].mac,
+                        mac2=net['T'].nameToIntf['T-eth2'].mac,
+                        label=1300, dev='M-eth1')
+
+            ti_mfa_conf(mac1=net['R'].nameToIntf['R-eth2'].mac,
+                        mac2=net['T'].nameToIntf['T-eth3'].mac,
+                        label=1200, dev='R-eth1')
+
+            call('rmmod ti_mfa')
+    finally:
+        net.stop()
+
+def ti_mfa_conf(mac1, mac2, label, dev):
+    call(f"ti-mfa-conf add {mac1}-{mac2} {label} {dev}", shell=True)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--interactive', const=True, default=False,
+                        action='store_const', help='set interactive')
+    return parser.parse_args()
 
 if __name__ == '__main__':
     setLogLevel( 'info' )
-    run()
+    ARGS = parse_args()
+    run(interactive=ARGS.interactive)
