@@ -81,6 +81,10 @@ static int ti_mfa_register_nf_hook(struct net *net, struct net_device *dev)
     struct ti_mfa_nf_hook *hook = NULL;
     int ret = 0;
     u32 key = ti_mfa_nf_hook_hash(dev);
+
+    if (strcmp(dev->name, "lo") == 0) {
+        return 0;
+    }
     hash_for_each_possible_rcu(ti_mfa_nf_hook_table, hook, hnode, key) {
 
         /* Possible TODO
@@ -155,13 +159,6 @@ static int ti_mfa_notify(struct notifier_block *this, unsigned long event, void 
             ti_mfa_ifup(dev);
             break;
 
-        case NETDEV_REGISTER:
-            ti_mfa_register_nf_hook(net, dev);
-            break;
-
-        case NETDEV_UNREGISTER:
-            ti_mfa_unregister_nf_hook(net, dev);
-            break;
         default:
             break;
     }
