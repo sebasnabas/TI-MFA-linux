@@ -78,7 +78,23 @@ u32 ti_mfa_nf_hook_hash(struct net_device *dev)
 
 static int ti_mfa_register_nf_hook(struct net *net, struct net_device *dev)
 {
-    struct ti_mfa_nf_hook *hook;
+    struct ti_mfa_nf_hook *hook = NULL;
+    int ret = 0;
+    u32 key = ti_mfa_nf_hook_hash(dev);
+    hash_for_each_possible_rcu(ti_mfa_nf_hook_table, hook, hnode, key) {
+
+        /* Possible TODO
+         * Only accept one evasion route for each link failure for now
+         */
+        if (hook->nf_hook.dev == dev) {
+            pr_debug("Hook already in table for dev %s", dev->name);
+            break;
+        }
+    }
+
+    if (hook != NULL) {
+        return 0;
+    }
 
     hook = kmalloc(sizeof(*hook), GFP_KERNEL);
     if (hook == NULL) {
@@ -93,7 +109,14 @@ static int ti_mfa_register_nf_hook(struct net *net, struct net_device *dev)
 
     hash_add_rcu(ti_mfa_nf_hook_table, &hook->hnode, ti_mfa_nf_hook_hash(dev));
 
-    return nf_register_net_hook(net, &(hook->nf_hook));
+    ret = nf_register_net_hook(net, &(hook->nf_hook));
+
+    if (ret != 0) {
+        pr_err("nf hook register failed on %s", dev->name);
+    } else {
+        pr_debug("nf hook registered on %s", dev->name);
+    }
+    return ret;
 }
 
 static void ti_mfa_unregister_nf_hook(struct net *net, struct net_device *dev)
