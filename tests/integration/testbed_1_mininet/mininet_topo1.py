@@ -138,7 +138,7 @@ def run(interactive=False):
             # FIXME: This, in combination with the commands above
             # leads to the error
             # "unregister_netdevice: waiting for M-eth1 to become free. Usage count = 1"
-            # info(net['M'].cmd('ping -c 1 10.200.200.1'))
+            info(net['M'].cmd('ping -c 1 10.200.200.1'))
 
     finally:
         call('rmmod ti_mfa || true', shell=True)
