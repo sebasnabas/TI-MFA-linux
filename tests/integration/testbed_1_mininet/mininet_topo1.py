@@ -107,7 +107,7 @@ def run(interactive=False):
             CLI(net)
 
         else:
-            call('cd /home/vagrant/ti-mfa-src; make install; popd', shell=True)
+            call('cd /home/vagrant/ti-mfa-src; make install', shell=True)
 
             net.configLinkStatus('M', 'T', status='down')
             net.configLinkStatus('R', 'T', status='down')
