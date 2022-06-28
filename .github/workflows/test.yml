@@ -41,6 +41,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vagrant-
 
+      - name: Start Vagrant box
+        working-directory: tests/integration/testbed_1_mininet
+        run: vagrant up
+
       - name: Run mininet testbed 1 script
         working-directory: tests/integration/testbed_1_mininet
-        run: sudo ./mininet_topo1.py
+        run: vagrant ssh -c 'sudo ./mininet_topo1.py'
