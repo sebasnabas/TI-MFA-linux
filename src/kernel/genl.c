@@ -133,6 +133,23 @@ static struct net *parse_net_ns(struct net_ns *net_ns)
     return get_net_ns_by_pid(net_ns->pid);
 }
 
+static struct ti_mfa_route build_route_from_attr(const struct ti_mfa_param attr)
+{
+    struct ti_mfa_route rt = {
+        .destination_label = attr.dest->label,
+    };
+
+    ether_addr_copy(rt.link.source, attr.link_source->oct);
+    ether_addr_copy(rt.link.dest, attr.link_dest->oct);
+
+    rt.net_ns = parse_net_ns(attr.net_ns);
+    rt.net_ns = rt.net_ns == NULL ? &init_net : rt.net_ns,
+
+    rt.out_dev = dev_get_by_name(rt.net_ns, attr.backup_dev_name);
+
+    return rt;
+}
+
 static int add_backup_route(struct ti_mfa_param attr, struct genl_info *info)
 {
     int ret = 3;
@@ -140,15 +157,7 @@ static int add_backup_route(struct ti_mfa_param attr, struct genl_info *info)
 
     if (attr.link_dest != NULL && attr.link_source != NULL
             && attr.dest != NULL && attr.backup_dev_name != NULL) {
-        struct ti_mfa_route rt = {
-            .destination_label = attr.dest->label,
-        };
-
-        ether_addr_copy(rt.link.source, attr.link_source->oct);
-        ether_addr_copy(rt.link.dest, attr.link_dest->oct);
-        strcpy(rt.out_dev_name, attr.backup_dev_name);
-
-        rt.net_ns = parse_net_ns(attr.net_ns);
+        struct ti_mfa_route rt = build_route_from_attr(attr);
 
         switch (rt_add(rt)) {
             case TI_MFA_RT_OK:
@@ -187,15 +196,7 @@ static int del_backup_route(struct ti_mfa_param attr, struct genl_info *info)
     struct genl_msg_data data[1];
     if (attr.link_dest != NULL && attr.link_source != NULL
             && attr.dest != NULL && attr.backup_dev_name != NULL) {
-        struct ti_mfa_route rt = {
-            .destination_label = attr.dest->label,
-        };
-
-        ether_addr_copy(rt.link.source, attr.link_source->oct);
-        ether_addr_copy(rt.link.dest, attr.link_dest->oct);
-        strcpy(rt.out_dev_name, attr.backup_dev_name);
-
-        rt.net_ns = parse_net_ns(attr.net_ns);
+        struct ti_mfa_route rt = build_route_from_attr(attr);
 
         switch (rt_del(rt)) {
             case TI_MFA_RT_OK:

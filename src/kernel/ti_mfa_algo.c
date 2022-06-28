@@ -249,7 +249,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
             if (tmp_nh == NULL)
                 continue;
 
-            out_dev_tmp = dev_get_by_name(net, found_rt->out_dev_name);
+            out_dev_tmp = found_rt->out_dev;
             if (mpls_output_possible(out_dev_tmp))
                 out_dev = out_dev_tmp;
 
@@ -295,7 +295,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
                 continue;
             }
 
-            out_dev_tmp = dev_get_by_name(net, found_rt->out_dev_name);
+            out_dev_tmp = found_rt->out_dev;
             if (mpls_output_possible(out_dev_tmp))
                 out_dev = out_dev_tmp;
 
@@ -741,7 +741,7 @@ void ti_mfa_ifdown(struct net_device *dev)
             }
 
             if (!(neigh == NULL || is_zero_ether_addr(neigh->ha) || neigh->dev != dev))
-                pr_debug("nh: %pM", neigh->ha);
+                /* pr_debug("nh: %pM", neigh->ha); */
 
             for (i = 0; i < tmp; i++) {
                 if (deleted_neighs[i] == NULL)
@@ -787,12 +787,11 @@ void ti_mfa_ifdown(struct net_device *dev)
                 deleted_neighs[tmp]->net = net;
                 deleted_neighs[tmp]->dev = nh->nh_dev;
 
-                if (neigh == NULL || is_zero_ether_addr(neigh->ha) || neigh->dev != dev)
+                if (is_zero_ether_addr(neigh->ha) || neigh->dev != dev)
                     eth_zero_addr(deleted_neighs[tmp]->ha);
                 else
                     ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
 
-                pr_debug("nh labels: %d\n", nh->nh_labels);
                 for (j = 0; j < nh->nh_labels; j++) {
                     uint index = j + deleted_neighs[tmp]->label_count;
                     uint k = 0;
@@ -807,16 +806,16 @@ void ti_mfa_ifdown(struct net_device *dev)
                     if (found)
                         continue;
                     deleted_neighs[tmp]->labels[index] = nh->nh_label[j];
-                    pr_debug("Added label %u\n", deleted_neighs[tmp]->labels[index]);
+                    pr_debug("Added label neigh %d [%d] = %u\n", tmp, index, deleted_neighs[tmp]->labels[index]);
                 }
 
                 if (nh->nh_labels == 0) {
                     deleted_neighs[tmp]->labels[j] = label_index;
-                    pr_debug("Added label [%d] = %u\n", j, deleted_neighs[tmp]->labels[j]);
+                    pr_debug("Added label to neigh %d [%d] = %u\n", tmp, j, deleted_neighs[tmp]->labels[j]);
                     deleted_neighs[tmp]->label_count++;
                 }
 
-                pr_debug("Added neigh %u [%d] = %pM\n", tmp, j, deleted_neighs[tmp]->ha);
+                pr_debug("Added neigh %u = %pM\n", tmp,  deleted_neighs[tmp]->ha);
                 deleted_neighs[tmp]->label_count += j;
                 tmp++;
             }

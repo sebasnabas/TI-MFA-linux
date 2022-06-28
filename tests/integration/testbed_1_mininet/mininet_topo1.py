@@ -16,7 +16,7 @@ from mininet.cli import CLI
 
 
 class LinuxMPLSRouter( Node ):
-    "A Node with IP forwarding enabled."
+    "A Node with IP & MPLS forwarding enabled."
 
     # pylint: disable=arguments-differ
     def config( self, **params ):
@@ -45,8 +45,7 @@ class LinuxMPLSRouter( Node ):
 DEFAULT_LOOPBACK_IP_PREFIX = '10.200.200.'
 
 class NetworkTopo( Topo ):
-    # pylint: disable=arguments-differ
-    def build( self, **_ ):
+    def build( self, **_ ): # pylint: disable=arguments-differ
 
         node_t, node_l, node_m, node_r = [
             self.addNode(s, cls=LinuxMPLSRouter, ip=None)
@@ -129,15 +128,13 @@ def run(interactive=False):
             CLI(net)
 
         else:
+            call('date', shell=True)
             net.configLinkStatus('M', 'T', status='down')
             net.configLinkStatus('R', 'T', status='down')
 
             info('M: ' + ti_mfa_conf(**e_m_backup_route_args) + '\n')
             info('R: ' + ti_mfa_conf(**e_r_backup_route_args) + '\n')
 
-            # FIXME: This, in combination with the commands above
-            # leads to the error
-            # "unregister_netdevice: waiting for M-eth1 to become free. Usage count = 1"
             info(net['M'].cmd('ping -c 1 10.200.200.1'))
 
     finally:

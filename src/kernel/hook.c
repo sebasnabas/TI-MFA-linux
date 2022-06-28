@@ -152,17 +152,24 @@ static int ti_mfa_notify(struct notifier_block *this, unsigned long event, void 
 
     switch (event) {
         case NETDEV_GOING_DOWN:
+            pr_debug("NETDEV %s going down\n", dev->name);
+
             ti_mfa_unregister_nf_hook(net, dev);
             ti_mfa_ifdown(dev);
             break;
 
         case NETDEV_UP:
+            pr_debug("NETDEV %s is up\n", dev->name);
+
             ti_mfa_register_nf_hook(net, dev);
             ti_mfa_ifup(dev);
             break;
 
         case NETDEV_UNREGISTER:
+            pr_debug("NETDEV %s unregistering\n", dev->name);
+
             ti_mfa_clean_dev(dev);
+            rt_del_for_dev(dev);
             break;
 
         default:
