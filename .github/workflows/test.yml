@@ -47,4 +47,4 @@ jobs:
 
       - name: Run mininet testbed 1 script
         working-directory: tests/integration/testbed_1_mininet
-        run: vagrant ssh -c 'sudo ./mininet_topo1.py'
+        run: vagrant ssh -c 'sudo /vagrant/mininet_topo1.py'
