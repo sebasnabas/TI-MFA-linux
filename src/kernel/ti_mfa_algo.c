@@ -870,16 +870,40 @@ int initialize_ti_mfa(void)
         return -ENOMEM;
     }
 
+    pr_debug("local link failure table initialized\n");
+
     return 0;
 }
 
 void cleanup_ti_mfa(void)
 {
     uint i = 0;
+
+    pr_debug("Freeing up local link failure table\n");
+
     for (i = 0; i < number_of_deleted_neighs; i++) {
         if (deleted_neighs[i] == NULL) continue;
 
+        pr_debug("Freeing local link failure for %s\n", deleted_neighs[i]->dev->name);
         kfree(deleted_neighs[i]);
     }
     kfree(deleted_neighs);
+
+    pr_debug("local link failure table freed\n");
+}
+
+void ti_mfa_clean_dev(const struct net_device *dev)
+{
+    uint i = 0;
+    for (i = 0; i < number_of_deleted_neighs; i++) {
+        if (deleted_neighs[i] == NULL
+                || dev == NULL
+                || deleted_neighs[i]->dev != dev) {
+            continue;
+        }
+
+        pr_debug("Freeing local link failure for %s\n", deleted_neighs[i]->dev->name);
+        kfree(deleted_neighs[i]);
+        deleted_neighs[i] = NULL;
+    }
 }

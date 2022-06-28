@@ -18,5 +18,6 @@ void ti_mfa_ifdown(struct net_device *dev);
 void ti_mfa_ifup(const struct net_device *dev);
 int initialize_ti_mfa(void);
 void cleanup_ti_mfa(void);
+void ti_mfa_clean_dev(const struct net_device *dev);
 
 #endif // TI_MFA_ALGO_H

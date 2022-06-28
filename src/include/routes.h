@@ -24,4 +24,7 @@ int rt_flush(void);
 struct ti_mfa_route *rt_lookup(struct ti_mfa_link link);
 bool links_equal(struct ti_mfa_link one, struct ti_mfa_link other);
 
+int storage_init(void);
+int storage_exit(void);
+
 #endif  /* TI_MFA_ROUTES_H */

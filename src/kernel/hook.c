@@ -19,9 +19,10 @@
 #include <net/protocol.h>
 #include <net/sock.h>
 
-#include "ti_mfa_genl.h"
 #include "mpls.h"
+#include "routes.h"
 #include "ti_mfa_algo.h"
+#include "ti_mfa_genl.h"
 #include "utils.h"
 
 MODULE_AUTHOR("Sebastian");
@@ -80,23 +81,18 @@ static int ti_mfa_register_nf_hook(struct net *net, struct net_device *dev)
 {
     struct ti_mfa_nf_hook *hook = NULL;
     int ret = 0;
+    bool found= false;
     u32 key = ti_mfa_nf_hook_hash(dev);
 
-    if (strcmp(dev->name, "lo") == 0) {
-        return 0;
-    }
     hash_for_each_possible_rcu(ti_mfa_nf_hook_table, hook, hnode, key) {
-
-        /* Possible TODO
-         * Only accept one evasion route for each link failure for now
-         */
         if (hook->nf_hook.dev == dev) {
             pr_debug("Hook already in table for dev %s", dev->name);
+            found = true;
             break;
         }
     }
 
-    if (hook != NULL) {
+    if (found) {
         return 0;
     }
 
@@ -110,31 +106,36 @@ static int ti_mfa_register_nf_hook(struct net *net, struct net_device *dev)
     hook->nf_hook.pf = NFPROTO_NETDEV;
     hook->nf_hook.priority = NF_IP_PRI_LAST;
     hook->nf_hook.dev = dev;
-
-    hash_add_rcu(ti_mfa_nf_hook_table, &hook->hnode, ti_mfa_nf_hook_hash(dev));
-
     ret = nf_register_net_hook(net, &(hook->nf_hook));
 
     if (ret != 0) {
         pr_err("nf hook register failed on %s", dev->name);
-    } else {
-        pr_debug("nf hook registered on %s", dev->name);
+        return ret;
     }
+
+    hash_add_rcu(ti_mfa_nf_hook_table, &hook->hnode, ti_mfa_nf_hook_hash(dev));
+
+    pr_debug("nf hook registered on %s", dev->name);
+
     return ret;
 }
 
 static void ti_mfa_unregister_nf_hook(struct net *net, struct net_device *dev)
 {
-    struct ti_mfa_nf_hook *hook;
+    struct ti_mfa_nf_hook *hook = NULL;
 
-    if (dev == NULL || hash_empty(ti_mfa_nf_hook_table)) {
+    if (net == NULL || dev == NULL || hash_empty(ti_mfa_nf_hook_table)) {
         return;
     }
 
     hash_for_each_possible_rcu(ti_mfa_nf_hook_table, hook,
                                hnode, ti_mfa_nf_hook_hash(dev)) {
+        if (hook == NULL || hook->nf_hook.dev != dev) {
+            continue;
+        }
         pr_debug("Unregistering TI-MFA hook for device: %s!\n", dev->name);
         nf_unregister_net_hook(net, &(hook->nf_hook));
+        hash_del_rcu(&hook->hnode);
     }
 }
 
@@ -145,18 +146,23 @@ static int ti_mfa_notify(struct notifier_block *this, unsigned long event, void 
     struct mpls_dev *mdev;
 
     mdev = mpls_dev_get(dev);
-    if (!mdev || !net) {
-
+    if (mdev == NULL || net == NULL) {
         return NOTIFY_OK;
     }
 
     switch (event) {
         case NETDEV_GOING_DOWN:
+            ti_mfa_unregister_nf_hook(net, dev);
             ti_mfa_ifdown(dev);
             break;
 
         case NETDEV_UP:
+            ti_mfa_register_nf_hook(net, dev);
             ti_mfa_ifup(dev);
+            break;
+
+        case NETDEV_UNREGISTER:
+            ti_mfa_clean_dev(dev);
             break;
 
         default:
@@ -170,49 +176,20 @@ static struct notifier_block ti_mfa_dev_notifier = {
     .notifier_call = ti_mfa_notify,
 };
 
-static int initialize_hooks(void)
-{
-    int return_code;
-    uint i, number_of_mpls_devices;
-    struct net_device *dev;
-
-    number_of_mpls_devices = get_number_of_mpls_capable_net_devices(&init_net);
-    return_code = 0;
-    i = 0;
-
-    pr_debug("Found %d mpls capable net devices\n", number_of_mpls_devices);
-
-    read_lock(&dev_base_lock);
-    dev = first_net_device(&init_net);
-
-    while (dev)
-    {
-        return_code = ti_mfa_register_nf_hook(&init_net, dev);
-        if (return_code < 0)
-        {
-            pr_err("Registering ingress hook failed for device %s, with %d\n", dev->name, return_code);
-
-            goto exit;
-        }
-
-        pr_info("TI-MFA ingress hook registered on device: %s\n", dev->name);
-        i++;
-        dev = next_net_device(dev);
-    }
-
-exit:
-    read_unlock(&dev_base_lock);
-
-    return return_code;
-}
-
 static void unregister_hooks(void)
 {
     int i = 0;
-    struct ti_mfa_nf_hook *hook;
-    hash_for_each_rcu(ti_mfa_nf_hook_table, i, hook, hnode) {
+    struct ti_mfa_nf_hook *hook = NULL;
+    struct hlist_node   *tmp;
+
+    hash_for_each_safe(ti_mfa_nf_hook_table, i, tmp, hook, hnode) {
+        struct net *net = dev_net(hook->nf_hook.dev);
+
         pr_debug("Unregistering TI-MFA hook registered on device: %s!\n", hook->nf_hook.dev->name);
-        nf_unregister_net_hook(&init_net, &(hook->nf_hook));
+
+        nf_unregister_net_hook(net, &(hook->nf_hook));
+        hash_del_rcu(&hook->hnode);
+        kfree(hook);
     }
 }
 
@@ -223,9 +200,6 @@ static int __init ti_mfa_init(void)
     pr_info("TI-MFA started\n");
 
     hash_init(ti_mfa_nf_hook_table);
-    err = initialize_hooks();
-    if (err != 0)
-        goto out;
 
     err = initialize_ti_mfa();
     if (err != 0)
@@ -240,6 +214,7 @@ static int __init ti_mfa_init(void)
     if (err != 0)
         goto out_genl_unregister;
 
+    storage_init();
 out:
     return err;
 
@@ -265,6 +240,7 @@ static void __exit ti_mfa_exit(void)
     cleanup_ti_mfa();
     ti_mfa_genl_unregister();
     unregister_hooks();
+    storage_exit();
 
     pr_info("TI-MFA shut down\n");
 }
