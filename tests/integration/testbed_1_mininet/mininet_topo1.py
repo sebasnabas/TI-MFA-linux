@@ -6,6 +6,7 @@ import os
 import sys
 
 from subprocess import call
+from typing import Optional
 
 from mininet.topo import Topo
 from mininet.net import Mininet
@@ -103,29 +104,57 @@ def run(interactive=False):
 
     try:
         net.pingAll()
+
+        call('cd /home/vagrant/ti-mfa-src; make install', shell=True)
+
+        e_m_backup_route_args = {
+            'mac1': net['M'].nameToIntf['M-eth2'].mac,
+            'mac2': net['T'].nameToIntf['T-eth2'].mac,
+            'label': 1300,
+            'dev':'M-eth1',
+            'pid': net['M'].pid
+        }
+        e_r_backup_route_args = {
+            'mac1': net['R'].nameToIntf['R-eth2'].mac,
+            'mac2': net['T'].nameToIntf['T-eth3'].mac,
+            'label': 1200,
+            'dev': 'R-eth1',
+            'pid': net['R'].pid
+        }
+
         if interactive:
+            info('M: ' + ti_mfa_conf(**e_m_backup_route_args, dry_run=True) + '\n')
+            info('R: ' + ti_mfa_conf(**e_r_backup_route_args, dry_run=True) + '\n')
+
             CLI(net)
 
         else:
-            call('cd /home/vagrant/ti-mfa-src; make install', shell=True)
-
             net.configLinkStatus('M', 'T', status='down')
             net.configLinkStatus('R', 'T', status='down')
 
-            ti_mfa_conf(mac1=net['M'].nameToIntf['M-eth2'].mac,
-                        mac2=net['T'].nameToIntf['T-eth2'].mac,
-                        label=1300, dev='M-eth1')
+            info('M: ' + ti_mfa_conf(**e_m_backup_route_args) + '\n')
+            info('R: ' + ti_mfa_conf(**e_r_backup_route_args) + '\n')
 
-            ti_mfa_conf(mac1=net['R'].nameToIntf['R-eth2'].mac,
-                        mac2=net['T'].nameToIntf['T-eth3'].mac,
-                        label=1200, dev='R-eth1')
+            # FIXME: This, in combination with the commands above
+            # leads to the error
+            # "unregister_netdevice: waiting for M-eth1 to become free. Usage count = 1"
+            # info(net['M'].cmd('ping -c 1 10.200.200.1'))
 
-            call('rmmod ti_mfa')
     finally:
+        call('rmmod ti_mfa || true', shell=True)
         net.stop()
 
-def ti_mfa_conf(mac1, mac2, label, dev):
-    call(f"ti-mfa-conf add {mac1}-{mac2} {label} {dev}", shell=True)
+def ti_mfa_conf(mac1: str, mac2: str, label: int, dev: str, pid: Optional[int] = None,
+                dry_run: bool = False):
+    command = f"ti-mfa-conf add {mac1}-{mac2} {label} {dev}"
+
+    if pid:
+        command += f" {pid}"
+
+    if not dry_run:
+        call(command, shell=True)
+
+    return command
 
 
 def parse_args():

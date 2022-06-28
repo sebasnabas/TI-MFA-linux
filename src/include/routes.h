@@ -19,9 +19,9 @@ enum ti_mfa_route_exit_code {
 u32 rt_hash(struct ti_mfa_link link);
 int rt_add(struct ti_mfa_route rt);
 int rt_del(struct ti_mfa_route rt);
-int rt_show(char *dst, size_t size);
+int rt_show(struct net *net, char *dst, size_t size);
 int rt_flush(void);
-struct ti_mfa_route *rt_lookup(struct ti_mfa_link link);
+struct ti_mfa_route *rt_lookup(const struct net *net, struct ti_mfa_link link);
 bool links_equal(struct ti_mfa_link one, struct ti_mfa_link other);
 
 int storage_init(void);

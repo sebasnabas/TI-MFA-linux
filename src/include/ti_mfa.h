@@ -19,6 +19,7 @@ struct ti_mfa_route {
     struct ti_mfa_link link;
     unsigned int       destination_label;
     char               out_dev_name[IFNAMSIZ];
+    struct net         *net_ns;
     struct hlist_node  hnode;
 };
 

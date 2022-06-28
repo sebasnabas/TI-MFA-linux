@@ -47,7 +47,7 @@ bool links_equal(struct ti_mfa_link one, struct ti_mfa_link other)
     return equal;
 }
 
-struct ti_mfa_route *rt_lookup(struct ti_mfa_link link)
+struct ti_mfa_route *rt_lookup(const struct net *net, struct ti_mfa_link link)
 {
     struct ti_mfa_route *found_rt;
     u32 key = rt_hash(link);
@@ -56,7 +56,7 @@ struct ti_mfa_route *rt_lookup(struct ti_mfa_link link)
         /* Possible TODO
          * Only accept one evasion route for each link failure for now
          */
-        if (links_equal(found_rt->link, link))
+        if (links_equal(found_rt->link, link) && found_rt->net_ns == net)
             return found_rt;
     }
     return NULL;
@@ -68,7 +68,11 @@ int rt_add(struct ti_mfa_route new_route)
     u32 hash_key;
     struct ti_mfa_route *rt;
 
-    if (rt_lookup(new_route.link)) {
+    if (new_route.net_ns == NULL) {
+        new_route.net_ns = &init_net;
+    }
+
+    if (rt_lookup(new_route.net_ns, new_route.link)) {
         pr_err("Route already exists\n");
         ret = TI_MFA_RT_ROUTE_ALREADY_EXISTS;
         goto end;
@@ -124,7 +128,7 @@ end:
     return ret;
 }
 
-int rt_show(char *dst, size_t size)
+int rt_show(struct net *net, char *dst, size_t size)
 {
     int i = 0, ret = TI_MFA_RT_OK;
     struct ti_mfa_route *rt;
@@ -140,10 +144,15 @@ int rt_show(char *dst, size_t size)
 
     rcu_read_lock();
     hash_for_each_rcu(backup_route_table, i, rt, hnode) {
-        sprintf(dst + strlen(dst), "\tDestination: %u\n", rt->destination_label);
-        sprintf(dst + strlen(dst), "\tLink Source: %pM\n", rt->link.source);
-        sprintf(dst + strlen(dst), "\tLink Dest:   %pM\n", rt->link.dest);
-        sprintf(dst + strlen(dst), "\tOut dev:     %s\n", rt->out_dev_name);
+        if (net != NULL && rt->net_ns != net)
+            continue;
+
+        sprintf(dst + strlen(dst), "\tDestination:         %u\n", rt->destination_label);
+        sprintf(dst + strlen(dst), "\tLink Source:         %pM\n", rt->link.source);
+        sprintf(dst + strlen(dst), "\tLink Dest:           %pM\n", rt->link.dest);
+        sprintf(dst + strlen(dst), "\tOut dev:             %s\n", rt->out_dev_name);
+        sprintf(dst + strlen(dst), "\tNet NS is init_net:  %s\n", rt->net_ns == &init_net ? "True" : "False");
+        sprintf(dst + strlen(dst), "\tNet NS is NULL:      %s\n", rt->net_ns == NULL ? "True" : "False");
 
         sprintf(dst + strlen(dst), "------------------\n");
     }
@@ -165,7 +174,7 @@ int rt_flush(void)
         goto end;
     }
 
-    pr_debug("Flushing\n");
+    pr_debug("Flushing routing table\n");
 
     hash_for_each_safe(backup_route_table, i, tmp, rt, hnode) {
         pr_debug("Deleting route for %u\n", rt->destination_label);
@@ -183,6 +192,8 @@ int storage_init(void)
 
     hash_init(backup_route_table);
 
+    pr_debug("Routing table initialized\n");
+
     return ret;
 }
 
@@ -191,6 +202,8 @@ int storage_exit(void)
     int ret = 0;
 
     rt_flush();
+
+    pr_debug("Routing table cleaned up\n");
 
     return ret;
 }

@@ -225,7 +225,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
         struct ti_mfa_link failed_link = ti_mfa_hdr_to_link(link_failures[index]);
 
         /* Step 1.1 */
-        struct ti_mfa_route *found_rt = rt_lookup(failed_link);
+        struct ti_mfa_route *found_rt = rt_lookup(net, failed_link);
         if (!found_rt)
             continue;
 
@@ -266,7 +266,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
         struct ti_mfa_link failed_link = ti_mfa_hdr_to_link(next_hop->link_failures[index]);
 
         /* Step 1.1 */
-        struct ti_mfa_route *found_rt = rt_lookup(failed_link);
+        struct ti_mfa_route *found_rt = rt_lookup(net, failed_link);
         if (!found_rt)
             continue;
 
@@ -719,7 +719,7 @@ void ti_mfa_ifdown(struct net_device *dev)
             u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
             bool found_deleted_neigh = false;
 
-            if (nh->nh_dev && nh->nh_dev != dev)
+            if (nh->nh_dev == NULL || (nh->nh_dev && nh->nh_dev != dev))
                 continue;
 
             switch (nh->nh_via_table) {
@@ -781,7 +781,6 @@ void ti_mfa_ifdown(struct net_device *dev)
                 }
             }
 
-            pr_debug("Not found\n");
             if (!found_deleted_neigh) {
                 uint j = 0;
                 deleted_neighs[tmp] = kzalloc(sizeof(struct ti_mfa_neigh), GFP_KERNEL);
@@ -817,7 +816,7 @@ void ti_mfa_ifdown(struct net_device *dev)
                     deleted_neighs[tmp]->label_count++;
                 }
 
-                pr_debug("Added neigh %u: %pM\n", tmp, deleted_neighs[tmp]->ha);
+                pr_debug("Added neigh %u [%d] = %pM\n", tmp, j, deleted_neighs[tmp]->ha);
                 deleted_neighs[tmp]->label_count += j;
                 tmp++;
             }

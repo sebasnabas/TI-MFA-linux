@@ -7,6 +7,7 @@
 #include <linux/kernel.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
+#include <net/net_namespace.h>
 #include <linux/rwlock.h>
 
 #include "routes.h"
@@ -41,6 +42,7 @@ static struct nla_policy ti_mfa_genl_policy[_TI_MFA_A_MAX + 1] = {
     [TI_MFA_A_LINK_DEST]       = { .type = NLA_BINARY },
     [TI_MFA_A_BACKUP_DEV_NAME] = { .type = NLA_STRING },
     [TI_MFA_A_BACKUP_LABEL]    = { .type = NLA_BINARY },
+    [TI_MFA_A_NET_NS_PID]      = { .type = NLA_BINARY },
     [TI_MFA_A_RESPONSE]        = { .type = NLA_STRING },
     [TI_MFA_A_RESPONSE_LST]    = { .type = NLA_STRING }
 };
@@ -70,6 +72,8 @@ static void extract_ti_mfa_attrs(const struct genl_info *info, struct ti_mfa_par
 
     a->dest            = (struct mpls_dest *) extract_nl_attr(info, TI_MFA_A_BACKUP_LABEL);
     a->backup_dev_name = (char *) extract_nl_attr(info, TI_MFA_A_BACKUP_DEV_NAME);
+
+    a->net_ns          = (struct net_ns *) extract_nl_attr(info, TI_MFA_A_NET_NS_PID);
 }
 
 static void debug_print_attributes(struct ti_mfa_param *ti_mfa_attr)
@@ -79,6 +83,8 @@ static void debug_print_attributes(struct ti_mfa_param *ti_mfa_attr)
 
     if (ti_mfa_attr->dest            != NULL) pr_debug("Label: %u\n", ti_mfa_attr->dest->label);
     if (ti_mfa_attr->backup_dev_name != NULL) pr_debug("NetDev: %s\n", ti_mfa_attr->backup_dev_name);
+
+    if (ti_mfa_attr->net_ns          != NULL) pr_debug("NetNS PID: %d\n", ti_mfa_attr->net_ns->pid);
 }
 
 static int send_response(struct genl_info *info, unsigned int n_data,
@@ -118,6 +124,15 @@ static int send_response(struct genl_info *info, unsigned int n_data,
     return 0;
 }
 
+static struct net *parse_net_ns(struct net_ns *net_ns)
+{
+    if (net_ns == NULL) {
+        return NULL;
+    }
+
+    return get_net_ns_by_pid(net_ns->pid);
+}
+
 static int add_backup_route(struct ti_mfa_param attr, struct genl_info *info)
 {
     int ret = 3;
@@ -132,6 +147,8 @@ static int add_backup_route(struct ti_mfa_param attr, struct genl_info *info)
         ether_addr_copy(rt.link.source, attr.link_source->oct);
         ether_addr_copy(rt.link.dest, attr.link_dest->oct);
         strcpy(rt.out_dev_name, attr.backup_dev_name);
+
+        rt.net_ns = parse_net_ns(attr.net_ns);
 
         switch (rt_add(rt)) {
             case TI_MFA_RT_OK:
@@ -178,9 +195,9 @@ static int del_backup_route(struct ti_mfa_param attr, struct genl_info *info)
         ether_addr_copy(rt.link.dest, attr.link_dest->oct);
         strcpy(rt.out_dev_name, attr.backup_dev_name);
 
-        ret = rt_del(rt);
+        rt.net_ns = parse_net_ns(attr.net_ns);
 
-        switch (ret) {
+        switch (rt_del(rt)) {
             case TI_MFA_RT_OK:
                 ret = 0;
                 break;
@@ -203,17 +220,18 @@ static int del_backup_route(struct ti_mfa_param attr, struct genl_info *info)
     return ret;
 }
 
-static int show_all_routes(struct genl_info *info)
+static int show_all_routes(struct ti_mfa_param attr, struct genl_info *info)
 {
     int ret = 0 ;
     int len;
     char *message;
     struct genl_msg_data data[1];
+    struct net *net = parse_net_ns(attr.net_ns);
 
     len = 4096;
     message = (char *) kzalloc(len, GFP_ATOMIC);
 
-    ret = rt_show(message + strlen(message), 40);
+    ret = rt_show(net, message + strlen(message), 40);
 
     switch (ret) {
         case TI_MFA_RT_OK:
@@ -269,7 +287,7 @@ static int ti_mfa_genl_show(struct sk_buff *skb, struct genl_info *info)
     extract_ti_mfa_attrs(info, &attr);
     debug_print_attributes(&attr);
 
-    ret = show_all_routes(info);
+    ret = show_all_routes(attr, info);
 
     set_msg_data(data, TI_MFA_A_RESPONSE_LST, err_str[ret], strlen(err_str[ret]));
 
