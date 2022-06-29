@@ -47,7 +47,7 @@ bool links_equal(struct ti_mfa_link one, struct ti_mfa_link other)
     return equal;
 }
 
-struct ti_mfa_route *rt_lookup(struct ti_mfa_link link)
+struct ti_mfa_route *rt_lookup(const struct net *net, struct ti_mfa_link link)
 {
     struct ti_mfa_route *found_rt;
     u32 key = rt_hash(link);
@@ -56,7 +56,7 @@ struct ti_mfa_route *rt_lookup(struct ti_mfa_link link)
         /* Possible TODO
          * Only accept one evasion route for each link failure for now
          */
-        if (links_equal(found_rt->link, link))
+        if (links_equal(found_rt->link, link) && found_rt->net_ns == net)
             return found_rt;
     }
     return NULL;
@@ -68,7 +68,11 @@ int rt_add(struct ti_mfa_route new_route)
     u32 hash_key;
     struct ti_mfa_route *rt;
 
-    if (rt_lookup(new_route.link)) {
+    if (new_route.net_ns == NULL) {
+        new_route.net_ns = &init_net;
+    }
+
+    if (rt_lookup(new_route.net_ns, new_route.link)) {
         pr_err("Route already exists\n");
         ret = TI_MFA_RT_ROUTE_ALREADY_EXISTS;
         goto end;
@@ -106,15 +110,23 @@ int rt_del(struct ti_mfa_route rt)
 
     key = rt_hash(rt.link);
     hash_for_each_possible_rcu(backup_route_table, found_rt, hnode, key) {
-        if (strcmp(found_rt->out_dev_name, rt.out_dev_name) == 0
+        if (found_rt->out_dev == rt.out_dev
                 && links_equal(found_rt->link, rt.link)
                 && found_rt->destination_label == rt.destination_label) {
 
             pr_debug("Deleting route for %pM <-> %pM to %u\n", found_rt->link.source,
                     found_rt->link.dest, found_rt->destination_label);
+
+            /*
+             * decrease dev ref counter, since we increased it when using
+             * dev_get_by_name(rt.net_ns, attr.backup_dev_name) in genl.c
+             * NOTE: decrease it 2 times?
+            */
+            dev_put(found_rt->out_dev);
+
             hash_del_rcu(&found_rt->hnode);
 
-            /* TODO: Figure out how to avoid freeze on free <19-04-22> */
+            /* FIXME: Figure out how to avoid freeze on free <19-04-22> */
             /* kfree(found_rt); */
             ret = TI_MFA_RT_OK;
         }
@@ -124,7 +136,28 @@ end:
     return ret;
 }
 
-int rt_show(char *dst, size_t size)
+int rt_del_for_dev(const struct net_device *dev)
+{
+    int i = 0;
+    struct ti_mfa_route *rt;
+    hash_for_each_rcu(backup_route_table, i, rt, hnode) {
+        if (rt->out_dev != dev)
+            continue;
+
+        pr_info("Deleted backup route with dev %s for link %pM-%pM\n", rt->out_dev->name, rt->link.dest, rt->link.source);
+
+        /*
+         * decrease dev ref counter, since we increased it when using
+         * dev_get_by_name(rt.net_ns, attr.backup_dev_name) in genl.c
+        */
+        dev_put(rt->out_dev);
+        hash_del_rcu(&rt->hnode);
+    }
+
+    return TI_MFA_RT_OK;
+}
+
+int rt_show(const struct net *net, char *dst, size_t size)
 {
     int i = 0, ret = TI_MFA_RT_OK;
     struct ti_mfa_route *rt;
@@ -140,10 +173,15 @@ int rt_show(char *dst, size_t size)
 
     rcu_read_lock();
     hash_for_each_rcu(backup_route_table, i, rt, hnode) {
-        sprintf(dst + strlen(dst), "\tDestination: %u\n", rt->destination_label);
-        sprintf(dst + strlen(dst), "\tLink Source: %pM\n", rt->link.source);
-        sprintf(dst + strlen(dst), "\tLink Dest:   %pM\n", rt->link.dest);
-        sprintf(dst + strlen(dst), "\tOut dev:     %s\n", rt->out_dev_name);
+        if (net != NULL && rt->net_ns != net)
+            continue;
+
+        sprintf(dst + strlen(dst), "\tDestination:         %u\n", rt->destination_label);
+        sprintf(dst + strlen(dst), "\tLink Source:         %pM\n", rt->link.source);
+        sprintf(dst + strlen(dst), "\tLink Dest:           %pM\n", rt->link.dest);
+        sprintf(dst + strlen(dst), "\tOut dev:             %s\n", rt->out_dev->name);
+        sprintf(dst + strlen(dst), "\tNet NS is init_net:  %s\n", rt->net_ns == &init_net ? "True" : "False");
+        sprintf(dst + strlen(dst), "\tNet NS is NULL:      %s\n", rt->net_ns == NULL ? "True" : "False");
 
         sprintf(dst + strlen(dst), "------------------\n");
     }
@@ -165,10 +203,16 @@ int rt_flush(void)
         goto end;
     }
 
-    pr_debug("Flushing\n");
+    pr_debug("Flushing routing table\n");
 
     hash_for_each_safe(backup_route_table, i, tmp, rt, hnode) {
         pr_debug("Deleting route for %u\n", rt->destination_label);
+
+        /*
+         * decrease dev ref counter, since we increased it when using
+         * dev_get_by_name(rt.net_ns, attr.backup_dev_name) in genl.c
+        */
+        dev_put(rt->out_dev);
         hash_del_rcu(&rt->hnode);
         kfree(rt);
     }
@@ -183,6 +227,8 @@ int storage_init(void)
 
     hash_init(backup_route_table);
 
+    pr_debug("Routing table initialized\n");
+
     return ret;
 }
 
@@ -191,6 +237,8 @@ int storage_exit(void)
     int ret = 0;
 
     rt_flush();
+
+    pr_debug("Routing table cleaned up\n");
 
     return ret;
 }

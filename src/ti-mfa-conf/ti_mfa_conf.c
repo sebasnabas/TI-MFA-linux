@@ -31,6 +31,8 @@ static void reset_parameters() {
     free(params.dest);
     params.dest               = NULL;
     params.backup_dev_name    = NULL;
+    free(params.net_ns);
+    params.net_ns             = NULL;
 }
 
 static void print_nl_attrs()
@@ -226,6 +228,12 @@ static void set_attributes()
         set_nl_attr(na, TI_MFA_A_BACKUP_DEV_NAME, params.backup_dev_name, strlen(params.backup_dev_name));
         req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
     }
+
+    if (params.net_ns != NULL) {
+        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
+        set_nl_attr(na, TI_MFA_A_NET_NS_PID, params.net_ns, sizeof(*params.net_ns));
+        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
+    }
 }
 
 static int send_add_command()
@@ -413,6 +421,7 @@ static void print_parameters()
 
     if (params.dest            != NULL)  printf("Backup Label:      %u\n", (unsigned int) params.dest->label);
     if (params.backup_dev_name != NULL)  printf("Backup net dev:    %s\n", params.backup_dev_name);
+    if (params.net_ns          != NULL)  printf("NetNS PID:         %d\n", params.net_ns->pid);
     printf("---------------------\n");
 }
 
@@ -426,6 +435,7 @@ static int parse_add_del_args(int argc, char **argv)
 {
     int ret = -1, if_len = 0;
     unsigned int mpls_label;
+    int net_ns_pid = -1;
 
     if (argc < 5 ) {
         printf("Command line is not complete.\n");
@@ -439,7 +449,7 @@ static int parse_add_del_args(int argc, char **argv)
 
     mpls_label = strtoul(argv[3], NULL, 10);
     if (mpls_label == EINVAL || mpls_label == ERANGE) {
-        printf("Error: MPLS label is invalid: \"%s\"\n", argv[4]);
+        printf("Error: MPLS label is invalid: \"%s\"\n", argv[3]);
         goto end;
     }
     params.dest = malloc(sizeof(*params.dest));
@@ -448,6 +458,22 @@ static int parse_add_del_args(int argc, char **argv)
     if_len = strlen(argv[4]);
     params.backup_dev_name = calloc(sizeof(char), if_len);
     memmove(params.backup_dev_name, argv[4], if_len);
+
+    if (argv[5] == 0)
+    {
+        params.net_ns = NULL;
+    }
+    else {
+        net_ns_pid = strtoul(argv[5], NULL, 10);
+        if (net_ns_pid == EINVAL || net_ns_pid == ERANGE) {
+            printf("Error: PID is invalid: \"%s\"\n", argv[5]);
+            goto end;
+        }
+        params.net_ns = malloc(sizeof(*params.net_ns));
+        params.net_ns->pid = net_ns_pid;
+    }
+
+    print_parameters();
 
     ret = 0;
 end:
@@ -492,7 +518,7 @@ static int do_show(int argc, char **argv)
     int ret = -1 ;
 
     if (argc > 2) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
+        printf("Too many parameters. Please try \"ti-mfa-conf show help\" \n");
         goto end;
     }
 
@@ -518,25 +544,6 @@ end:
 }
 
 /**
- * do_help(): handles "ti-mfa-conf help " command
-*/
-
-static int do_help(int argc, char **argv)
-{
-    int ret = -1;
-
-    if (argc > 2) {
-        printf("Too many parameters. Please try \"ti-mfa-conf help\" \n");
-        goto end;
-    }
-
-    ret = 0;
-
-end:
-    return ret ;
-}
-
-/**
  * main(): main method
  */
 
@@ -552,15 +559,10 @@ int main(int argc, char **argv)
         goto end;
     }
 
-    if (strcmp(argv[1], HELP) == 0) {
-        ret = usage();
-        goto end;
-    }
-
     params.command = argv[1];
 
     if (strcmp(params.command, HELP) == 0)
-        ret = do_help(argc, argv);
+        ret = usage();
 
     else if (strcmp(params.command, FLUSH) == 0)
         ret = do_flush(argc, argv);

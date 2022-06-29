@@ -34,6 +34,7 @@ enum TI_MFA_GNL_ATTRIBUTES {
 	TI_MFA_A_LINK_DEST,
 	TI_MFA_A_BACKUP_LABEL,
 	TI_MFA_A_BACKUP_DEV_NAME,
+    TI_MFA_A_NET_NS_PID,
 
 	TI_MFA_A_RESPONSE,
 	TI_MFA_A_RESPONSE_LST,
@@ -61,12 +62,17 @@ struct mpls_dest {
     unsigned int label;
 };
 
+struct net_ns {
+    unsigned int pid;
+};
+
 struct ti_mfa_param {
 	char *command;
 	struct mac *link_source;
 	struct mac *link_dest;
 	struct mpls_dest *dest;
 	char *backup_dev_name;
+    struct net_ns *net_ns;
 };
 
 int ti_mfa_genl_register(void);
