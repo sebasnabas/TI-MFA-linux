@@ -16,6 +16,7 @@
 #include "../include/ti_mfa_conf.h"
 
 int sd;
+struct timeval tv = {5, 0};
 int ti_mfa_fam_id;
 struct genl_msg req, ans;
 struct  nlattr *nl_attr[TI_MFA_A_MAX + 1];
@@ -85,11 +86,17 @@ static int do_receive_response()
         ret = -1;
     }
     if (rep_len < 0) {
-        printf("do_receive_response - error receiving reply message.\n");
+        switch (errno) {
+            case EAGAIN:
+                fprintf(stderr, "Got socket receive timeout. Is the ti_mfa kernel module loaded?\n");
+                break;
+            default:
+                fprintf(stderr, "do_receive_response - error %s receiving reply message.\n", strerror(errno));
+        }
         exit(-1);
     }
     if (!NLMSG_OK((&ans.n), rep_len)) {
-        printf("do_receive_response - invalid reply message received.\n");
+        fprintf(stderr, "do_receive_response - invalid reply message received.\n");
         exit(-1);
     }
 
@@ -138,6 +145,7 @@ static int create_nl_socket(void)
 {
     int fd;
 
+
     fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_GENERIC);
     if (fd < 0) {
         perror("create_nl_socket - unable to create netlink socket.");
@@ -145,6 +153,8 @@ static int create_nl_socket(void)
     }
 
     sd = fd;
+    setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&tv, sizeof(struct timeval));
+
     return 0;
 }
 
@@ -427,7 +437,12 @@ static void print_parameters()
 
 static int usage(void)
 {
-    fprintf(stderr, "Usage: ti-mfa-conf route { COMMAND | help} \n");
+    fprintf(stderr, "Usage: ti-mfa-conf { COMMAND | help}\n");
+    fprintf(stderr, "       ti-mfa-conf show\n");
+    fprintf(stderr, "       ti-mfa-conf flush\n");
+    fprintf(stderr, "       ti-mfa-conf { add | del } ROUTE \n");
+    fprintf(stderr, "ROUTE := MAC-MAC MPLSLABEL DEV [ NETNS_PID ]\n");
+
     return 0;
 }
 
@@ -443,7 +458,7 @@ static int parse_add_del_args(int argc, char **argv)
     }
 
     if (parse_link(argv[2]) != 0) {
-        printf("Error: a link in the format of {mac}-{mac} is expected rather than \"%s\".\n", argv[2]);
+        printf("Error: a link in the format of {MAC}-{MAC} is expected rather than \"%s\".\n", argv[2]);
         goto end;
     }
 
@@ -473,16 +488,13 @@ static int parse_add_del_args(int argc, char **argv)
         params.net_ns->pid = net_ns_pid;
     }
 
-    print_parameters();
-
     ret = 0;
 end:
     return ret;
 }
 
 /**
- * do_add(): handles "ti-mfa-conf localsid add SID BEHAVIOR ... " command
- * Based on the behavior a different call is invoked
+ * do_add(): handles "ti-mfa-conf add ..." command
 */
 
 static int do_add(int argc, char **argv)
@@ -498,7 +510,7 @@ end:
 }
 
 /**
- * do_del(): handles "ti-mfa-conf localsid del SID " command
+ * do_del(): handles "ti-mfa-conf del ..." command
 */
 
 static int do_del(int argc, char **argv)
@@ -552,7 +564,6 @@ int main(int argc, char **argv)
     int ret = -1 ;
 
     reset_parameters();
-    genl_client_init();
 
     if (argc < 2 ) {
         ret = usage();
@@ -562,9 +573,11 @@ int main(int argc, char **argv)
     params.command = argv[1];
 
     if (strcmp(params.command, HELP) == 0)
-        ret = usage();
+        return usage();
 
-    else if (strcmp(params.command, FLUSH) == 0)
+    genl_client_init();
+
+    if (strcmp(params.command, FLUSH) == 0)
         ret = do_flush(argc, argv);
 
     else if (strcmp(params.command, SHOW) == 0)
@@ -576,8 +589,10 @@ int main(int argc, char **argv)
     else if (strcmp(params.command, ADD) == 0)
         ret = do_add(argc, argv);
 
-    else
-        printf("Unrecognized command. Please try \"ti-mfa-conf help\".\n");
+    else {
+        fprintf(stderr, "Unrecognized command. Please try \"ti-mfa-conf help\".\n");
+        return -1;
+    }
 
     print_parameters();
 
