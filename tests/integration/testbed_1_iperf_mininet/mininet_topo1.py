@@ -153,9 +153,10 @@ def run(interactive=False):
         call('rmmod ti_mfa || true', shell=True)
         net.stop()
 
-def iperf3_client(net, lf_count: int):
-    net['S'].cmd(f"iperf3 -c 10.200.200.1 -J -i 1 -t 20 > /vagrant/iperf3_results/{lf_count}_link_failures.json",
-         shell=True)
+def iperf3_client(net, lf_count: int, bitrate: str = '600M'):
+    net['S'].cmd(f"iperf3 -c 10.200.200.1 -J -i 1 -t 20 -b {bitrate} "
+                 + f"> /vagrant/iperf3_results/{lf_count}_link_failures.json",
+                 shell=True)
 
 def ti_mfa_conf(mac1: str, mac2: str, label: int, dev: str, pid: Optional[int] = None,
                 dry_run: bool = False):
