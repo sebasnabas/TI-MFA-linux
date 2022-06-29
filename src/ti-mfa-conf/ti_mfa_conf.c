@@ -488,8 +488,6 @@ static int parse_add_del_args(int argc, char **argv)
         params.net_ns->pid = net_ns_pid;
     }
 
-    print_parameters();
-
     ret = 0;
 end:
     return ret;
@@ -591,8 +589,10 @@ int main(int argc, char **argv)
     else if (strcmp(params.command, ADD) == 0)
         ret = do_add(argc, argv);
 
-    else
-        printf("Unrecognized command. Please try \"ti-mfa-conf help\".\n");
+    else {
+        fprintf(stderr, "Unrecognized command. Please try \"ti-mfa-conf help\".\n");
+        return -1;
+    }
 
     print_parameters();
 
