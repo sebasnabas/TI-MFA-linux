@@ -22,15 +22,18 @@ A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-M
 Needs Kernel `>= 4.2` (For Ingress Hook)
 
 #### Control plane tool
-`ti-mfa-conf` configuration tool for:
-* adding a route      (`ti-mfa-conf add <mac>-<mac> label dev`)
-* deleting a route    (`ti-mfa-conf del <mac>-<mac> label dev`)
-* deleting all routes (`ti-mfa-conf flush`)
-* showing all routes  (`ti-mfa-conf show`)
+`ti-mfa-conf` configuration tool for modifying backup routes in case of a link failure:
+* adding a route      `ti-mfa-conf add MAC-MAC MPLSLABEL DEV [ NETNS_PID ]`
+* deleting a route    `ti-mfa-conf del MAC-MAC MPLSLABEL DEV [ NETNS_PID ]`
+* deleting all routes `ti-mfa-conf flush`
+* showing all routes  `ti-mfa-conf show`
 
-Routes are backup routes in case of a link failure.
-A link failure is specified by 2 hardware addresses.
-A route is an MPLS label.
+where
+* `MAC` is an Ethernet mac address
+* `MPLSLABEL` is an MPLS label
+* `DEV` is the name of a network interface the packet should be sent out on
+* `NETNS_PID` is optional and the process id of the network namespace the route should be saved for
+
 
 #### Kernel Module (Data plane)
 ```mermaid
