@@ -29,10 +29,10 @@ Needs Kernel `>= 4.2` (For Ingress Hook)
 * showing all routes  `ti-mfa-conf show`
 
 where
-* `MAC` is an Ethernet mac address
-* `MPLSLABEL` is an MPLS label
-* `DEV` is the name of a network interface the packet should be sent out on
-* `NETNS_PID` is optional and the process id of the network namespace the route should be saved for
+* `MAC` is an Ethernet mac address,
+* `MPLSLABEL` is an MPLS label,
+* `DEV` is the name of a network interface the packet should be sent out on,
+* `NETNS_PID` is optional and the process identifier for whose network namespace the route should be saved.
 
 
 #### Kernel Module (Data plane)
