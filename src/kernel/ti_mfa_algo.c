@@ -225,7 +225,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
         struct ti_mfa_link failed_link = ti_mfa_hdr_to_link(link_failures[index]);
 
         /* Step 1.1 */
-        struct ti_mfa_route *found_rt = rt_lookup(failed_link);
+        struct ti_mfa_route *found_rt = rt_lookup(net, failed_link);
         if (!found_rt)
             continue;
 
@@ -249,7 +249,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
             if (tmp_nh == NULL)
                 continue;
 
-            out_dev_tmp = dev_get_by_name(net, found_rt->out_dev_name);
+            out_dev_tmp = found_rt->out_dev;
             if (mpls_output_possible(out_dev_tmp))
                 out_dev = out_dev_tmp;
 
@@ -266,7 +266,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
         struct ti_mfa_link failed_link = ti_mfa_hdr_to_link(next_hop->link_failures[index]);
 
         /* Step 1.1 */
-        struct ti_mfa_route *found_rt = rt_lookup(failed_link);
+        struct ti_mfa_route *found_rt = rt_lookup(net, failed_link);
         if (!found_rt)
             continue;
 
@@ -295,7 +295,7 @@ static int get_shortest_path(struct net *net, const u32 original_destination,
                 continue;
             }
 
-            out_dev_tmp = dev_get_by_name(net, found_rt->out_dev_name);
+            out_dev_tmp = found_rt->out_dev;
             if (mpls_output_possible(out_dev_tmp))
                 out_dev = out_dev_tmp;
 
@@ -702,7 +702,7 @@ void ti_mfa_ifdown(struct net_device *dev)
     struct net *net = dev_net(dev);
     unsigned label_index = 0, tmp = number_of_deleted_neighs;
 
-    if (!dev)
+    if (dev == NULL || net == NULL)
         return;
 
     pr_debug("ifdown for dev %s\n", dev->name);
@@ -710,7 +710,7 @@ void ti_mfa_ifdown(struct net_device *dev)
     platform_label = rtnl_dereference(net->mpls.platform_label);
     for (label_index = 0; label_index < net->mpls.platform_labels; label_index++) {
         struct mpls_route *rt = rtnl_dereference(platform_label[label_index]);
-        if (!rt)
+        if (rt == NULL)
             continue;
 
         for_nexthops(rt) {
@@ -719,7 +719,7 @@ void ti_mfa_ifdown(struct net_device *dev)
             u32 neigh_index = *((u32 *) mpls_nh_via(rt, nh));
             bool found_deleted_neigh = false;
 
-            if (nh->nh_dev && nh->nh_dev != dev)
+            if (nh->nh_dev == NULL || (nh->nh_dev && nh->nh_dev != dev))
                 continue;
 
             switch (nh->nh_via_table) {
@@ -731,13 +731,17 @@ void ti_mfa_ifdown(struct net_device *dev)
                     break;
             }
 
+            if (neigh == NULL) {
+                continue;
+            }
+
             if (number_of_deleted_neighs > 0 && number_of_deleted_neighs % DELETED_NEIGHS_INITIAL_SIZE == 0) {
                 pr_err("Not enough space in deleted neighbor array. Len: %u\n", number_of_deleted_neighs);
                 break;
             }
 
             if (!(neigh == NULL || is_zero_ether_addr(neigh->ha) || neigh->dev != dev))
-                pr_debug("nh: %pM", neigh->ha);
+                /* pr_debug("nh: %pM", neigh->ha); */
 
             for (i = 0; i < tmp; i++) {
                 if (deleted_neighs[i] == NULL)
@@ -764,8 +768,10 @@ void ti_mfa_ifdown(struct net_device *dev)
                             found = true;
                             break;
                         }
+
                         if (found)
                             continue;
+
                         deleted_neigh->labels[index] = nh->nh_label[j];
                         pr_debug("Added label %u\n", deleted_neigh->labels[index]);
                     }
@@ -781,12 +787,11 @@ void ti_mfa_ifdown(struct net_device *dev)
                 deleted_neighs[tmp]->net = net;
                 deleted_neighs[tmp]->dev = nh->nh_dev;
 
-                if (neigh == NULL || is_zero_ether_addr(neigh->ha) || neigh->dev != dev)
+                if (is_zero_ether_addr(neigh->ha) || neigh->dev != dev)
                     eth_zero_addr(deleted_neighs[tmp]->ha);
                 else
                     ether_addr_copy(deleted_neighs[tmp]->ha, neigh->ha);
 
-                pr_debug("nh labels: %d\n", nh->nh_labels);
                 for (j = 0; j < nh->nh_labels; j++) {
                     uint index = j + deleted_neighs[tmp]->label_count;
                     uint k = 0;
@@ -801,27 +806,29 @@ void ti_mfa_ifdown(struct net_device *dev)
                     if (found)
                         continue;
                     deleted_neighs[tmp]->labels[index] = nh->nh_label[j];
-                    pr_debug("Added label %u\n", deleted_neighs[tmp]->labels[index]);
+                    pr_debug("Added label neigh %d [%d] = %u\n", tmp, index, deleted_neighs[tmp]->labels[index]);
                 }
 
                 if (nh->nh_labels == 0) {
                     deleted_neighs[tmp]->labels[j] = label_index;
-                    pr_debug("Added label [%d] = %u\n", j, deleted_neighs[tmp]->labels[j]);
+                    pr_debug("Added label to neigh %d [%d] = %u\n", tmp, j, deleted_neighs[tmp]->labels[j]);
                     deleted_neighs[tmp]->label_count++;
                 }
 
-                pr_debug("Added neigh %u: %pM\n", tmp, deleted_neighs[tmp]->ha);
+                pr_debug("Added neigh %u = %pM\n", tmp,  deleted_neighs[tmp]->ha);
                 deleted_neighs[tmp]->label_count += j;
                 tmp++;
             }
         } endfor_nexthops(rt);
     }
+
     number_of_deleted_neighs = tmp;
     pr_debug("deleted_neighs: %u\n", number_of_deleted_neighs);
 }
 
 void ti_mfa_ifup(const struct net_device *dev)
 {
+    /* FIXME: Use hash table for link failures instead <26-06-22> */
     struct ti_mfa_neigh **tmp = kcalloc(DELETED_NEIGHS_INITIAL_SIZE, sizeof(struct ti_mfa_neigh *), GFP_KERNEL);
     uint i = 0, j = 0;
 
@@ -861,16 +868,40 @@ int initialize_ti_mfa(void)
         return -ENOMEM;
     }
 
+    pr_debug("local link failure table initialized\n");
+
     return 0;
 }
 
 void cleanup_ti_mfa(void)
 {
     uint i = 0;
+
+    pr_debug("Freeing up local link failure table\n");
+
     for (i = 0; i < number_of_deleted_neighs; i++) {
         if (deleted_neighs[i] == NULL) continue;
 
+        pr_debug("Freeing local link failure for %s\n", deleted_neighs[i]->dev->name);
         kfree(deleted_neighs[i]);
     }
     kfree(deleted_neighs);
+
+    pr_debug("local link failure table freed\n");
+}
+
+void ti_mfa_clean_dev(const struct net_device *dev)
+{
+    uint i = 0;
+    for (i = 0; i < number_of_deleted_neighs; i++) {
+        if (deleted_neighs[i] == NULL
+                || dev == NULL
+                || deleted_neighs[i]->dev != dev) {
+            continue;
+        }
+
+        pr_debug("Freeing local link failure for %s\n", deleted_neighs[i]->dev->name);
+        kfree(deleted_neighs[i]);
+        deleted_neighs[i] = NULL;
+    }
 }

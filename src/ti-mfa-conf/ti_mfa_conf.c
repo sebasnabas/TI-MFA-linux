@@ -16,6 +16,7 @@
 #include "../include/ti_mfa_conf.h"
 
 int sd;
+struct timeval tv = {5, 0};
 int ti_mfa_fam_id;
 struct genl_msg req, ans;
 struct  nlattr *nl_attr[TI_MFA_A_MAX + 1];
@@ -31,6 +32,8 @@ static void reset_parameters() {
     free(params.dest);
     params.dest               = NULL;
     params.backup_dev_name    = NULL;
+    free(params.net_ns);
+    params.net_ns             = NULL;
 }
 
 static void print_nl_attrs()
@@ -83,11 +86,17 @@ static int do_receive_response()
         ret = -1;
     }
     if (rep_len < 0) {
-        printf("do_receive_response - error receiving reply message.\n");
+        switch (errno) {
+            case EAGAIN:
+                fprintf(stderr, "Got socket receive timeout. Is the ti_mfa kernel module loaded?\n");
+                break;
+            default:
+                fprintf(stderr, "do_receive_response - error %s receiving reply message.\n", strerror(errno));
+        }
         exit(-1);
     }
     if (!NLMSG_OK((&ans.n), rep_len)) {
-        printf("do_receive_response - invalid reply message received.\n");
+        fprintf(stderr, "do_receive_response - invalid reply message received.\n");
         exit(-1);
     }
 
@@ -136,6 +145,7 @@ static int create_nl_socket(void)
 {
     int fd;
 
+
     fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_GENERIC);
     if (fd < 0) {
         perror("create_nl_socket - unable to create netlink socket.");
@@ -143,6 +153,8 @@ static int create_nl_socket(void)
     }
 
     sd = fd;
+    setsockopt(sd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&tv, sizeof(struct timeval));
+
     return 0;
 }
 
@@ -224,6 +236,12 @@ static void set_attributes()
     if (params.backup_dev_name != NULL) {
         na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
         set_nl_attr(na, TI_MFA_A_BACKUP_DEV_NAME, params.backup_dev_name, strlen(params.backup_dev_name));
+        req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
+    }
+
+    if (params.net_ns != NULL) {
+        na = (struct nlattr *) GENLMSG_NLA_NEXT(na);
+        set_nl_attr(na, TI_MFA_A_NET_NS_PID, params.net_ns, sizeof(*params.net_ns));
         req.n.nlmsg_len += NLMSG_ALIGN(na->nla_len);
     }
 }
@@ -413,12 +431,18 @@ static void print_parameters()
 
     if (params.dest            != NULL)  printf("Backup Label:      %u\n", (unsigned int) params.dest->label);
     if (params.backup_dev_name != NULL)  printf("Backup net dev:    %s\n", params.backup_dev_name);
+    if (params.net_ns          != NULL)  printf("NetNS PID:         %d\n", params.net_ns->pid);
     printf("---------------------\n");
 }
 
 static int usage(void)
 {
-    fprintf(stderr, "Usage: ti-mfa-conf route { COMMAND | help} \n");
+    fprintf(stderr, "Usage: ti-mfa-conf { COMMAND | help}\n");
+    fprintf(stderr, "       ti-mfa-conf show\n");
+    fprintf(stderr, "       ti-mfa-conf flush\n");
+    fprintf(stderr, "       ti-mfa-conf { add | del } ROUTE \n");
+    fprintf(stderr, "ROUTE := MAC-MAC MPLSLABEL DEV [ NETNS_PID ]\n");
+
     return 0;
 }
 
@@ -426,6 +450,7 @@ static int parse_add_del_args(int argc, char **argv)
 {
     int ret = -1, if_len = 0;
     unsigned int mpls_label;
+    int net_ns_pid = -1;
 
     if (argc < 5 ) {
         printf("Command line is not complete.\n");
@@ -433,13 +458,13 @@ static int parse_add_del_args(int argc, char **argv)
     }
 
     if (parse_link(argv[2]) != 0) {
-        printf("Error: a link in the format of {mac}-{mac} is expected rather than \"%s\".\n", argv[2]);
+        printf("Error: a link in the format of {MAC}-{MAC} is expected rather than \"%s\".\n", argv[2]);
         goto end;
     }
 
     mpls_label = strtoul(argv[3], NULL, 10);
     if (mpls_label == EINVAL || mpls_label == ERANGE) {
-        printf("Error: MPLS label is invalid: \"%s\"\n", argv[4]);
+        printf("Error: MPLS label is invalid: \"%s\"\n", argv[3]);
         goto end;
     }
     params.dest = malloc(sizeof(*params.dest));
@@ -449,14 +474,27 @@ static int parse_add_del_args(int argc, char **argv)
     params.backup_dev_name = calloc(sizeof(char), if_len);
     memmove(params.backup_dev_name, argv[4], if_len);
 
+    if (argv[5] == 0)
+    {
+        params.net_ns = NULL;
+    }
+    else {
+        net_ns_pid = strtoul(argv[5], NULL, 10);
+        if (net_ns_pid == EINVAL || net_ns_pid == ERANGE) {
+            printf("Error: PID is invalid: \"%s\"\n", argv[5]);
+            goto end;
+        }
+        params.net_ns = malloc(sizeof(*params.net_ns));
+        params.net_ns->pid = net_ns_pid;
+    }
+
     ret = 0;
 end:
     return ret;
 }
 
 /**
- * do_add(): handles "ti-mfa-conf localsid add SID BEHAVIOR ... " command
- * Based on the behavior a different call is invoked
+ * do_add(): handles "ti-mfa-conf add ..." command
 */
 
 static int do_add(int argc, char **argv)
@@ -472,7 +510,7 @@ end:
 }
 
 /**
- * do_del(): handles "ti-mfa-conf localsid del SID " command
+ * do_del(): handles "ti-mfa-conf del ..." command
 */
 
 static int do_del(int argc, char **argv)
@@ -492,7 +530,7 @@ static int do_show(int argc, char **argv)
     int ret = -1 ;
 
     if (argc > 2) {
-        printf("Too many parameters. Please try \"ti-mfa-conf localsid help\" \n");
+        printf("Too many parameters. Please try \"ti-mfa-conf show help\" \n");
         goto end;
     }
 
@@ -518,25 +556,6 @@ end:
 }
 
 /**
- * do_help(): handles "ti-mfa-conf help " command
-*/
-
-static int do_help(int argc, char **argv)
-{
-    int ret = -1;
-
-    if (argc > 2) {
-        printf("Too many parameters. Please try \"ti-mfa-conf help\" \n");
-        goto end;
-    }
-
-    ret = 0;
-
-end:
-    return ret ;
-}
-
-/**
  * main(): main method
  */
 
@@ -545,14 +564,8 @@ int main(int argc, char **argv)
     int ret = -1 ;
 
     reset_parameters();
-    genl_client_init();
 
     if (argc < 2 ) {
-        ret = usage();
-        goto end;
-    }
-
-    if (strcmp(argv[1], HELP) == 0) {
         ret = usage();
         goto end;
     }
@@ -560,9 +573,11 @@ int main(int argc, char **argv)
     params.command = argv[1];
 
     if (strcmp(params.command, HELP) == 0)
-        ret = do_help(argc, argv);
+        return usage();
 
-    else if (strcmp(params.command, FLUSH) == 0)
+    genl_client_init();
+
+    if (strcmp(params.command, FLUSH) == 0)
         ret = do_flush(argc, argv);
 
     else if (strcmp(params.command, SHOW) == 0)
@@ -574,8 +589,10 @@ int main(int argc, char **argv)
     else if (strcmp(params.command, ADD) == 0)
         ret = do_add(argc, argv);
 
-    else
-        printf("Unrecognized command. Please try \"ti-mfa-conf help\".\n");
+    else {
+        fprintf(stderr, "Unrecognized command. Please try \"ti-mfa-conf help\".\n");
+        return -1;
+    }
 
     print_parameters();
 
