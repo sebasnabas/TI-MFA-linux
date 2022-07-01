@@ -11,7 +11,7 @@
         "192.168.5.0/24 via 192.168.2.13 dev A-eth2",
         "192.168.6.0/24 nexthop via 192.168.1.12 dev A-eth1 weight 1 nexthop via 192.168.2.13 dev A-eth2 weight 1",
         "192.168.7.0/24 via 192.168.1.12 dev A-eth1",
-        "192.168.8.0/24 via 192.168.2.13 dev A-eth2"
+        "192.168.8.0/24 nexthop via 192.168.1.12 dev A-eth1 weight 1 nexthop via 192.168.2.13 dev A-eth2 weight 1"
       ],
       "-M": [
           "1100 dev lo",
@@ -112,7 +112,7 @@
     },
     "Z": {
       "": [
-        "10.200.200.1 nexthop  encap mpls 1100 via 192.168.8.15 dev Z-eth2 weight 1 nexthop  encap mpls  1100 via 192.168.7.14 dev Z-eth1 weight 1",
+        "10.200.200.1 encap mpls 1100 via 192.168.8.15 dev Z-eth2",
         "10.200.200.2 encap mpls 1200 via 192.168.7.14 dev Z-eth1",
         "10.200.200.3 encap mpls 1300 via 192.168.8.15 dev Z-eth2",
         "10.200.200.4 encap mpls 1400 via 192.168.7.14 dev Z-eth1",
