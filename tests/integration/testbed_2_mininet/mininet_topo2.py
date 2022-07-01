@@ -150,12 +150,12 @@ def run(interactive=False):
         else:
             call('date', shell=True)
 
-            info('### Testing link failure A-C. Packet should go Z-E-C-B-A')
+            info('### Testing link failure A-C. Packet should go Z-E-C-B-A\n')
             net.configLinkStatus('A', 'C', status='down')
             info('C: ' + ti_mfa_conf(**e_A_C_backup_route_args_C) + '\n')
             info(net['Z'].cmd('ping -c 1 10.200.200.1'))
 
-            info('### Testing additionally link failure B-C. Packet should go Z-E-C-E-D-B-A')
+            info('### Testing additionally link failure B-C. Packet should go Z-E-C-E-D-B-A\n')
             net.configLinkStatus('B', 'C', status='down')
 
             info('C: ' + ti_mfa_conf(**e_B_C_backup_route_args_C) + '\n')
