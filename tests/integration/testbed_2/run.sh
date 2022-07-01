@@ -62,7 +62,7 @@ function prepare {
 }
 
 function test_scenario_1_link_failure {
-    echo "Setting up link failure e_m"
+    echo "Setting up link failure A-C"
 
     if_A="eth2"
     if_C="eth1"
@@ -84,6 +84,7 @@ function test_scenario_2_link_failures {
     link_B_C="$(get_ha B "$if_B")-$(get_ha C "$if_C")"
 
     vagrant ssh C -c "ti-mfa-conf add ${link_B_C} 1500 eth3"
+    vagrant ssh E -c "ti-mfa-conf add ${link_B_C} 1400 eth2"
 
     vagrant ssh B -c "sudo ip link set $if_B down"
     vagrant ssh C -c "sudo ip link set $if_C down"
