@@ -122,7 +122,7 @@ def run(interactive=False):
             'mac1': net['A'].nameToIntf['A-eth2'].mac,
             'mac2': net['C'].nameToIntf['C-eth1'].mac,
             'label': 1200,
-            'dev':'C-eth1',
+            'dev':'C-eth2',
             'pid': net['C'].pid
         }
         e_B_C_backup_route_args_C = {
