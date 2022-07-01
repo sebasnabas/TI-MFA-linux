@@ -50,3 +50,26 @@ jobs:
       - name: Run mininet testbed 1 script
         working-directory: tests/integration/testbed_1_mininet
         run: vagrant ssh -c 'sudo /vagrant/mininet_topo1.py'
+
+  vagrant_testbed_2:
+    # Only macos has vagrant and virtual box installed
+    runs-on: macos-10.15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Cache Vagrant boxes
+        uses: actions/cache@v2
+        id: vagrant-base-box-cache
+        with:
+          path: ~/.vagrant.d/boxes
+          key: ${{ runner.os }}-vagrant-${{ hashFiles('tests/integration/testbed_2/Vagrantfile') }}
+          restore-keys: |
+            ${{ runner.os }}-vagrant-
+
+      - name: Install ansible
+        run: python3 -m pip install ansible
+
+      - name: Run testbed 2 script
+        working-directory: tests/integration/testbed_2
+        run: ./run.sh 2
