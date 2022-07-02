@@ -21,15 +21,15 @@ function reset {
         vagrant ssh "${machine}" -c "sudo rmmod ti_mfa || true"
 
         case "${machine}" in
-            T )
-                vagrant ssh T -c "sudo ip link set eth2 up"
-                vagrant ssh T -c "sudo ip link set eth3 up"
+            A )
+                vagrant ssh A -c "sudo ip link set eth2 up"
                 ;;
-            M )
-                vagrant ssh M -c "sudo ip link set eth2 up"
+            B )
+                vagrant ssh B -c "sudo ip link set eth2 up"
                 ;;
-            R )
-                vagrant ssh R -c "sudo ip link set eth2 up"
+            C )
+                vagrant ssh C -c "sudo ip link set eth1 up"
+                vagrant ssh C -c "sudo ip link set eth2 up"
                 ;;
         esac
     done || exit 1
@@ -62,59 +62,55 @@ function prepare {
 }
 
 function test_scenario_1_link_failure {
-    echo "Setting up link failure e_m"
+    echo "Setting up link failure A-C"
 
-    if_T="eth2"
-    if_M="eth2"
-    link_e_m="$(get_ha T "$if_T")-$(get_ha M "$if_M")"
+    if_A="eth2"
+    if_C="eth1"
+    link_A_C="$(get_ha A "$if_A")-$(get_ha C "$if_C")"
 
-    vagrant ssh T -c "sudo ip link set $if_T down"
-    vagrant ssh M -c "sudo ip link set $if_M down"
+    vagrant ssh A -c "sudo ip link set $if_A down"
+    vagrant ssh C -c "sudo ip link set $if_C down"
 
-    vagrant ssh M -c "ti-mfa-conf add ${link_e_m} 1300 eth3"
+    vagrant ssh C -c "ti-mfa-conf add ${link_A_C} 1200 eth2"
 }
 
 function test_scenario_2_link_failures {
     test_scenario_1_link_failure || true
 
-    echo "Setting up link failure e_r"
+    echo "Setting up link failure B-C"
 
-    if_T="eth3"
-    if_R="eth2"
-    link_e_r="$(get_ha T "$if_T")-$(get_ha R "$if_R")"
+    if_B="eth2"
+    if_C="eth2"
+    link_B_C="$(get_ha B "$if_B")-$(get_ha C "$if_C")"
 
-    vagrant ssh M -c "ti-mfa-conf add ${link_e_r} 1200 eth1"
+    vagrant ssh C -c "ti-mfa-conf add ${link_B_C} 1500 eth3"
+    vagrant ssh E -c "ti-mfa-conf add ${link_B_C} 1400 eth2"
 
-    vagrant ssh T -c "sudo ip link set $if_T down"
-    vagrant ssh R -c "sudo ip link set $if_R down"
+    vagrant ssh B -c "sudo ip link set $if_B down"
+    vagrant ssh C -c "sudo ip link set $if_C down"
 
 }
 
 function test_received_packet {
-    local listen_interface="$1"
-
-    vagrant ssh T -c 'ip route && ip -M route'
+    vagrant ssh A -c 'ip route && ip -M route'
 
     # Send 1 packet to 10.200.200.1
     # and wait for response
-    vagrant ssh M -c 'sleep 5 && ping -c 1 10.200.200.1'
+    vagrant ssh Z -c 'ping -c 1 10.200.200.1'
 }
 
 function topo_test {
-    local listen_interface
     case "$1" in
         1 )
             test_scenario_1_link_failure
-            listen_interface="eth1"
             ;;
         2 )
             test_scenario_2_link_failures
-            listen_interface="eth1"
             ;;
         * ) exit 1 ;;
     esac
 
-    test_received_packet "$listen_interface"
+    test_received_packet
 }
 
 prepare || exit 1

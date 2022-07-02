@@ -5,7 +5,7 @@
         "10.200.200.3 encap mpls 1300 via 192.168.2.13 dev eth2",
         "10.200.200.4 encap mpls  1400 via 192.168.3.14 dev eth3",
         "192.168.4.0/24 nexthop via 192.168.1.12 dev eth1 weight 1 nexthop via 192.168.2.13 dev eth2 weight 1",
-        "192.168.5.0/24 nexthop via 192.168.2.13 dev eth2 weight 1 nexthop via 192.168.3.14 dev eth3 weight 1"
+        "192.168.5.0/24 nexthop via 192.168.1.12 dev eth1 weight 1 nexthop via 192.168.2.13 dev eth2 weight 1 nexthop via 192.168.3.14 dev eth3 weight 1"
      ],
       "-M": [
           "1100 dev lo",
