@@ -1,4 +1,6 @@
-#!/usr/bin/bash -x
+#!/usr/bin/env bash
+
+set -ex
 
 pushd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
@@ -11,6 +13,7 @@ fi
 
 machine_neighbor_pairs=$(jq -r '.Neighbours | to_entries | .[] | .key as $machine | .value | map($machine + "=" + .) | .[]' network_config.json)
 
+# Fill neighbor caches
 for machine_neighbor_pair in $machine_neighbor_pairs
 do
     machine=${machine_neighbor_pair%=*}
