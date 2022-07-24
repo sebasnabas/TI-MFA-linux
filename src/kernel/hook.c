@@ -25,9 +25,9 @@
 #include "ti_mfa_genl.h"
 #include "utils.h"
 
-MODULE_AUTHOR("Sebastian");
+MODULE_AUTHOR("Sebastian <sebasnabas@protonmail.com>");
 MODULE_DESCRIPTION("Topology Independent Multi-Failure Alternate (TI-MFA)");
-MODULE_VERSION("0.2");
+MODULE_VERSION("0.4");
 MODULE_LICENSE("GPL");
 MODULE_SOFTDEP("pre: mpls_router");
 
