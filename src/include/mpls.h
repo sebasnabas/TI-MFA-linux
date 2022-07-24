@@ -9,11 +9,10 @@
 
 extern bool mpls_output_possible(struct net_device *dev);
 
-#define MPLS_LABEL(x)   (x & MPLS_LS_LABEL_MASK) >> MPLS_LS_LABEL_SHIFT;
-#define MPLS_TC(x)      (x & MPLS_LS_TTL_MASK) >> MPLS_LS_TTL_SHIFT;
-#define MPLS_STACK(x)   (x & MPLS_LS_TC_MASK) >> MPLS_LS_TC_SHIFT;
-#define MPLS_TTL(x)     (x & MPLS_LS_S_MASK) >> MPLS_LS_S_SHIFT;
-
+#define MPLS_LABEL(x) (x & MPLS_LS_LABEL_MASK) >> MPLS_LS_LABEL_SHIFT;
+#define MPLS_TC(x) (x & MPLS_LS_TTL_MASK) >> MPLS_LS_TTL_SHIFT;
+#define MPLS_STACK(x) (x & MPLS_LS_TC_MASK) >> MPLS_LS_TC_SHIFT;
+#define MPLS_TTL(x) (x & MPLS_LS_S_MASK) >> MPLS_LS_S_SHIFT;
 
 enum mpls_payload_type {
 	MPT_UNSPEC, /* IPv4 or IPv6 */
@@ -27,31 +26,30 @@ enum mpls_payload_type {
 };
 
 struct mpls_nh { /* next hop label forwarding entry */
-	struct net_device	*nh_dev;
+	struct net_device *nh_dev;
 
 	/* nh_flags is accessed under RCU in the packet path; it is
 	 * modified handling netdev events with rtnl lock held
 	 */
-	unsigned int		nh_flags;
-	u8			nh_labels;
-	u8			nh_via_alen;
-	u8			nh_via_table;
-	u8			nh_reserved1;
+	unsigned int nh_flags;
+	u8 nh_labels;
+	u8 nh_via_alen;
+	u8 nh_via_table;
+	u8 nh_reserved1;
 
-	u32			nh_label[];
+	u32 nh_label[];
 };
 
 /* offset of via from beginning of mpls_nh */
-#define MPLS_NH_VIA_OFF(num_labels) \
-		ALIGN(sizeof(struct mpls_nh) + (num_labels) * sizeof(u32), \
-		      VIA_ALEN_ALIGN)
+#define MPLS_NH_VIA_OFF(num_labels)                                \
+	ALIGN(sizeof(struct mpls_nh) + (num_labels) * sizeof(u32), \
+	      VIA_ALEN_ALIGN)
 
 /* all nexthops within a route have the same size based on the
  * max number of labels and max via length across all nexthops
  */
-#define MPLS_NH_SIZE(num_labels, max_via_alen)		\
-		(MPLS_NH_VIA_OFF((num_labels)) +	\
-		ALIGN((max_via_alen), VIA_ALEN_ALIGN))
+#define MPLS_NH_SIZE(num_labels, max_via_alen) \
+	(MPLS_NH_VIA_OFF((num_labels)) + ALIGN((max_via_alen), VIA_ALEN_ALIGN))
 
 enum mpls_ttl_propagation {
 	MPLS_TTL_PROP_DEFAULT,
@@ -81,34 +79,40 @@ enum mpls_ttl_propagation {
  * +----------------------+
  */
 struct mpls_route { /* next hop label forwarding entry */
-	struct rcu_head		rt_rcu;
-	u8			rt_protocol;
-	u8			rt_payload_type;
-	u8			rt_max_alen;
-	u8			rt_ttl_propagate;
-	u8			rt_nhn;
+	struct rcu_head rt_rcu;
+	u8 rt_protocol;
+	u8 rt_payload_type;
+	u8 rt_max_alen;
+	u8 rt_ttl_propagate;
+	u8 rt_nhn;
 	/* rt_nhn_alive is accessed under RCU in the packet path; it
 	 * is modified handling netdev events with rtnl lock held
 	 */
-	u8			rt_nhn_alive;
-	u8			rt_nh_size;
-	u8			rt_via_offset;
-	u8			rt_reserved1;
-	struct mpls_nh		rt_nh[];
+	u8 rt_nhn_alive;
+	u8 rt_nh_size;
+	u8 rt_via_offset;
+	u8 rt_reserved1;
+	struct mpls_nh rt_nh[];
 };
 
-#define for_nexthops(rt) {						\
-	int nhsel; struct mpls_nh *nh;  u8 *__nh;			\
-	for (nhsel = 0, nh = (rt)->rt_nh, __nh = (u8 *)((rt)->rt_nh);	\
-	     nhsel < (rt)->rt_nhn;					\
-	     __nh += rt->rt_nh_size, nh = (struct mpls_nh *)__nh, nhsel++)
+#define for_nexthops(rt)                                                      \
+	{                                                                     \
+		int nhsel;                                                    \
+		struct mpls_nh *nh;                                           \
+		u8 *__nh;                                                     \
+		for (nhsel = 0, nh = (rt)->rt_nh, __nh = (u8 *)((rt)->rt_nh); \
+		     nhsel < (rt)->rt_nhn; __nh += rt->rt_nh_size,            \
+		    nh = (struct mpls_nh *)__nh, nhsel++)
 
-#define change_nexthops(rt) {						\
-	int nhsel; struct mpls_nh *nh; u8 *__nh;			\
-	for (nhsel = 0, nh = (struct mpls_nh *)((rt)->rt_nh),		\
-			__nh = (u8 *)((rt)->rt_nh);			\
-	     nhsel < (rt)->rt_nhn;					\
-	     __nh += rt->rt_nh_size, nh = (struct mpls_nh *)__nh, nhsel++)
+#define change_nexthops(rt)                                           \
+	{                                                             \
+		int nhsel;                                            \
+		struct mpls_nh *nh;                                   \
+		u8 *__nh;                                             \
+		for (nhsel = 0, nh = (struct mpls_nh *)((rt)->rt_nh), \
+		    __nh = (u8 *)((rt)->rt_nh);                       \
+		     nhsel < (rt)->rt_nhn; __nh += rt->rt_nh_size,    \
+		    nh = (struct mpls_nh *)__nh, nhsel++)
 
 #define endfor_nexthops(rt) }
 
@@ -119,14 +123,15 @@ struct mpls_entry_decoded {
 	u8 bos;
 };
 
-static inline struct mpls_entry_decoded mpls_entry_decode(struct mpls_shim_hdr *hdr)
+static inline struct mpls_entry_decoded
+mpls_entry_decode(struct mpls_shim_hdr *hdr)
 {
 	struct mpls_entry_decoded result;
 	unsigned entry = be32_to_cpu(hdr->label_stack_entry);
 
 	result.label = (entry & MPLS_LS_LABEL_MASK) >> MPLS_LS_LABEL_SHIFT;
 	result.ttl = (entry & MPLS_LS_TTL_MASK) >> MPLS_LS_TTL_SHIFT;
-	result.tc =  (entry & MPLS_LS_TC_MASK) >> MPLS_LS_TC_SHIFT;
+	result.tc = (entry & MPLS_LS_TC_MASK) >> MPLS_LS_TC_SHIFT;
 	result.bos = (entry & MPLS_LS_S_MASK) >> MPLS_LS_S_SHIFT;
 
 	return result;
@@ -137,17 +142,17 @@ static inline struct mpls_dev *mpls_dev_get(const struct net_device *dev)
 	return rcu_dereference_rtnl(dev->mpls_ptr);
 }
 
-static inline int parse_encap_mpls_labels(struct mpls_shim_hdr *hdr, u32 labels[], int len)
+static inline int parse_encap_mpls_labels(struct mpls_shim_hdr *hdr,
+					  u32 labels[], int len)
 {
-    u8 label_count = len / 4;
-    int i;
+	u8 label_count = len / 4;
+	int i;
 
-    for (i = label_count - 1; i >= 0; i--)
-    {
-        labels[i] = mpls_entry_decode(hdr + i).label;
-    }
+	for (i = label_count - 1; i >= 0; i--) {
+		labels[i] = mpls_entry_decode(hdr + i).label;
+	}
 
-    return 0;
+	return 0;
 }
 
 /* Copied from /net/mpls/af_mpls.c */
@@ -157,12 +162,13 @@ static inline u8 *__mpls_nh_via(struct mpls_route *rt, struct mpls_nh *nh)
 }
 
 static inline const u8 *mpls_nh_via(const struct mpls_route *rt,
-			     const struct mpls_nh *nh)
+				    const struct mpls_nh *nh)
 {
 	return __mpls_nh_via((struct mpls_route *)rt, (struct mpls_nh *)nh);
 }
 
-static inline struct mpls_route *mpls_route_input_rcu(struct net *net, unsigned index)
+static inline struct mpls_route *mpls_route_input_rcu(struct net *net,
+						      unsigned index)
 {
 	struct mpls_route *rt = NULL;
 
@@ -177,14 +183,19 @@ static inline struct mpls_route *mpls_route_input_rcu(struct net *net, unsigned 
 /* Copied from /net/mpls/af_mpls.c { */
 static inline struct mpls_nh *mpls_get_nexthop(struct mpls_route *rt, u8 index)
 {
-    return (struct mpls_nh *)((u8 *)rt->rt_nh + index * rt->rt_nh_size);
+	return (struct mpls_nh *)((u8 *)rt->rt_nh + index * rt->rt_nh_size);
 }
 /* } */
 
 bool is_not_mpls(struct sk_buff *skb);
 uint get_number_of_mpls_capable_net_devices(struct net *net);
-void debug_print_mpls_entries(uint label_count, const struct mpls_entry_decoded entries[]);
-uint flush_mpls_label_stack(struct sk_buff *skb, struct mpls_entry_decoded mpls_entries[], int max_labels);
-void set_mpls_header(struct sk_buff *skb, uint label_count, const struct mpls_entry_decoded new_label_stack[], bool add_extension_hdr);
+void debug_print_mpls_entries(uint label_count,
+			      const struct mpls_entry_decoded entries[]);
+uint flush_mpls_label_stack(struct sk_buff *skb,
+			    struct mpls_entry_decoded mpls_entries[],
+			    int max_labels);
+void set_mpls_header(struct sk_buff *skb, uint label_count,
+		     const struct mpls_entry_decoded new_label_stack[],
+		     bool add_extension_hdr);
 
 #endif /* TI_MFA_MPLS_H */
