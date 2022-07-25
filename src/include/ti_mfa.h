@@ -4,8 +4,11 @@
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
 
-// /* Copied from /net/mpls/internal.h */
+/* Copied from net/mpls/internal.h
+ * {
+ */
 #define MAX_NEW_LABELS 30
+/* } */
 
 #define TI_MFA_MPLS_EXTENSION_LABEL \
 	MPLS_LABEL_EXTENSION /* Indicate that a ti-mfa header follows the mpls header */
