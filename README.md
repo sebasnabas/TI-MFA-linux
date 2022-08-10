@@ -3,7 +3,15 @@
 
 **Note:** TI-MFA is currently only implemented for MPLS. Srv6 is not supported (yet).
 
-A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-MFA) algorithm from [^1] ('described from the viewpoint of the node v where the packet hits another failed link'):
+A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-MFA) algorithm from [^1].
+
+- [Algorithm](#algorithm)
+- [Implementation](#implementation)
+- [Tests](#tests)
+- [Bibliography](#bibliography)
+
+## Algorithm
+Described from the viewpoint of the node v where the packet hits another failed link:
 >   1) Flush the label stack except for the destination t.
 >   2) Based on all link failures stored in the packet header,
 >       determine the shortest path P to the destination t in the
