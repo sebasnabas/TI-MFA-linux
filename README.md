@@ -9,6 +9,7 @@ A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-M
 - [Implementation](#implementation)
 - [Tests](#tests)
 - [Bibliography](#bibliography)
+- [License](#license)
 
 ## Algorithm
 Described from the viewpoint of the node v where the packet hits another failed link:
@@ -146,6 +147,16 @@ graph TB
     E ---|8| Z
 ```
 
-# Bibliography
+## License
+
+This work is dual-licensed under GNU General Public License version 2 only or MIT.
+You can choose between one of them if you use this work.
+
+`SPDX-License-Identifier: GPL-2.0 OR MIT`
+
+**Note:** [./src/include/internal/mpls.h](./src/include/internal/mpls.h) contains work from the Linux kernel licensed under GPL 2.0.
+
+## Bibliography
 [^1]: https://www.univie.ac.at/ct/stefan/gi18.pdf
 [^2]: https://conferences.sigcomm.org/sosr/2017/papers/sosr17-demo-sr.pdf
+
