@@ -28,7 +28,7 @@
 MODULE_AUTHOR("Sebastian <sebasnabas@protonmail.com>");
 MODULE_DESCRIPTION("Topology Independent Multi-Failure Alternate (TI-MFA)");
 MODULE_VERSION("0.4");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("Dual MIT/GPL");
 MODULE_SOFTDEP("pre: mpls_router");
 
 #define TABLE_SIZE 5 // 5 bits = 32 entries
