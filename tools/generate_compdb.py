@@ -22,6 +22,7 @@ UNKNOWN_OPTIONS = [
     '-mno-fp-ret-in-387',
     '-mpreferred-stack-boundary=3',
     '-mskip-rax-setup',
+    '-mfunction-return=thunk-extern',
     '-mindirect-branch-cs-prefix',
     '-mindirect-branch=thunk-extern',
     '-mindirect-branch-register',
