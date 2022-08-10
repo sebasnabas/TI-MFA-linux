@@ -149,12 +149,7 @@ graph TB
 
 ## License
 
-This work is dual-licensed under GNU General Public License version 2 only or MIT.
-You can choose between one of them if you use this work.
-
-`SPDX-License-Identifier: GPL-2.0 OR MIT`
-
-**Note:** [./src/include/internal/mpls.h](./src/include/internal/mpls.h) contains work from the Linux kernel licensed under GPL 2.0.
+See [./COPYING](./COPYING)
 
 ## Bibliography
 [^1]: https://www.univie.ac.at/ct/stefan/gi18.pdf
