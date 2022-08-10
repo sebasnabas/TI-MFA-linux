@@ -1,10 +1,18 @@
 # TI-MFA-linux
-![build](https://github.com/sebasnabas/TI-MFA-linux/actions/workflows/build.yml/badge.svg)
 ![test](https://github.com/sebasnabas/TI-MFA-linux/actions/workflows/test.yml/badge.svg)
 
 **Note:** TI-MFA is currently only implemented for MPLS. Srv6 is not supported (yet).
 
-A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-MFA) algorithm from [^1] ('described from the viewpoint of the node v where the packet hits another failed link'):
+A Linux kernel module for the Topology Independent Multi Failure Alternate (TI-MFA) algorithm from [^1].
+
+- [Algorithm](#algorithm)
+- [Implementation](#implementation)
+- [Tests](#tests)
+- [Bibliography](#bibliography)
+- [License](#license)
+
+## Algorithm
+Described from the viewpoint of the node v where the packet hits another failed link:
 >   1) Flush the label stack except for the destination t.
 >   2) Based on all link failures stored in the packet header,
 >       determine the shortest path P to the destination t in the
@@ -139,6 +147,16 @@ graph TB
     E ---|8| Z
 ```
 
-# Bibliography
+## License
+
+This work is dual-licensed under GNU General Public License version 2 only or MIT.
+You can choose between one of them if you use this work.
+
+`SPDX-License-Identifier: GPL-2.0 OR MIT`
+
+**Note:** [./src/include/internal/mpls.h](./src/include/internal/mpls.h) contains work from the Linux kernel licensed under GPL 2.0.
+
+## Bibliography
 [^1]: https://www.univie.ac.at/ct/stefan/gi18.pdf
 [^2]: https://conferences.sigcomm.org/sosr/2017/papers/sosr17-demo-sr.pdf
+

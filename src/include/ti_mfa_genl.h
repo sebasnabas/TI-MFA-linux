@@ -5,11 +5,11 @@
  * COMMANDS
  */
 
-#define ADD 	"add"
-#define DEL		"del"
-#define SHOW 	"show"
-#define HELP 	"help"
-#define FLUSH 	"flush"
+#define ADD "add"
+#define DEL "del"
+#define SHOW "show"
+#define HELP "help"
+#define FLUSH "flush"
 
 /**
  * BEHAVIORS CODE
@@ -34,7 +34,7 @@ enum TI_MFA_GNL_ATTRIBUTES {
 	TI_MFA_A_LINK_DEST,
 	TI_MFA_A_BACKUP_LABEL,
 	TI_MFA_A_BACKUP_DEV_NAME,
-    TI_MFA_A_NET_NS_PID,
+	TI_MFA_A_NET_NS_PID,
 
 	TI_MFA_A_RESPONSE,
 	TI_MFA_A_RESPONSE_LST,
@@ -46,12 +46,12 @@ enum TI_MFA_GNL_ATTRIBUTES {
 #define TI_MFA_GNL_FAMILY_VERSION 1
 #define TI_MFA_A_MAX (_TI_MFA_A_MAX - 1)
 #define TI_MFA_C_MAX (_TI_MFA_C_MAX - 1)
-#define MAX_BUF_LEN 1024*5
+#define MAX_BUF_LEN 1024 * 5
 
 struct genl_msg_data {
-	int		atype;
-	void	*data;
-	int		len;
+	int atype;
+	void *data;
+	int len;
 };
 
 struct mac {
@@ -59,11 +59,11 @@ struct mac {
 };
 
 struct mpls_dest {
-    unsigned int label;
+	unsigned int label;
 };
 
 struct net_ns {
-    unsigned int pid;
+	unsigned int pid;
 };
 
 struct ti_mfa_param {
@@ -72,11 +72,10 @@ struct ti_mfa_param {
 	struct mac *link_dest;
 	struct mpls_dest *dest;
 	char *backup_dev_name;
-    struct net_ns *net_ns;
+	struct net_ns *net_ns;
 };
 
 int ti_mfa_genl_register(void);
 int ti_mfa_genl_unregister(void);
 
 #endif /* GENETLINK_H_ */
-
