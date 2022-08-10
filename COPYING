@@ -1,7 +1,7 @@
 This work is dual-licensed under GNU General Public License version 2 only or MIT.
 You can choose between one of them if you use this work.
-See [./licenses](.licenses)
+See ./LICENSES/
 
 `SPDX-License-Identifier: GPL-2.0 OR MIT`
 
-**Note:** [./src/include/internal/mpls.h](./src/include/internal/mpls.h) contains work from the Linux kernel licensed under GPL 2.0.
+Note: ./src/include/internal/mpls.h contains work from the Linux kernel licensed under GPL 2.0.
